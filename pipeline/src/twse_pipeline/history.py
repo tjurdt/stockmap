@@ -59,17 +59,77 @@ def validate_history_row(row: dict) -> None:
     jsonschema.validate(row, schema)
 
 
+def rebuild_from_prices(
+    universe: list[Constituent], history: PriceHistory, *, history_dir: Path = HISTORY_DIR
+) -> int:
+    """用回填好的價格序列，整檔重建 data/history/factors-YYYY.jsonl。
+
+    PE/PB/DY 無歷史資料 → null（每日管線之後會為新日期補上）。回傳寫入的總列數。
+    """
+    per_code = {}
+    for c in universe:
+        dates, adj, raw = history.series(c.code)
+        per_code[c.code] = (dates, adj, raw, {d: i for i, d in enumerate(dates)})
+
+    all_dates = sorted({d for dates, *_ in per_code.values() for d in dates})
+    by_year: dict[str, list[str]] = {}
+    for date in all_dates:
+        stocks = []
+        for c in universe:
+            dates, adj, raw, idx = per_code[c.code]
+            i = idx.get(date)
+            if i is None:
+                continue
+            factors = compute_all(adj[: i + 1])
+            stocks.append(
+                {
+                    "code": c.code,
+                    "close": raw[i],
+                    "adjClose": adj[i],
+                    "mcap": round(raw[i] * c.shares_m / 100, 2),
+                    "pe": None,
+                    "pb": None,
+                    "dy": None,
+                    "mom20": _r(factors["mom20"]),
+                    "mom60": _r(factors["mom60"]),
+                    "mom121": _r(factors["mom121"]),
+                }
+            )
+        if not stocks:
+            continue
+        row = {"schemaVersion": SCHEMA_VERSION, "date": date, "stocks": stocks}
+        validate_history_row(row)
+        by_year.setdefault(date[:4], []).append(
+            json.dumps(row, ensure_ascii=False, separators=(",", ":"))
+        )
+
+    history_dir.mkdir(parents=True, exist_ok=True)
+    total = 0
+    for year, lines in by_year.items():
+        (history_dir / f"factors-{year}.jsonl").write_text("\n".join(lines) + "\n", "utf-8")
+        total += len(lines)
+    return total
+
+
 def append_history_row(row: dict, history_dir: Path = HISTORY_DIR) -> bool:
-    """append 一列。若當年度檔案最後一列已是同一天，略過並回傳 False。"""
+    """append 一列。若日期不晚於當年度（或前一年度）檔案最後一列，略過並回傳 False。"""
     validate_history_row(row)
     history_dir.mkdir(parents=True, exist_ok=True)
     path = history_dir / f"factors-{row['date'][:4]}.jsonl"
 
-    if path.exists():
-        lines = path.read_text("utf-8").splitlines()
-        if lines and json.loads(lines[-1]).get("date") == row["date"]:
-            return False
+    last = _last_row_date(path) or _last_row_date(
+        history_dir / f"factors-{int(row['date'][:4]) - 1}.jsonl"
+    )
+    if last and row["date"] <= last:
+        return False
 
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
     return True
+
+
+def _last_row_date(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    lines = [ln for ln in path.read_text("utf-8").splitlines() if ln.strip()]
+    return json.loads(lines[-1]).get("date") if lines else None

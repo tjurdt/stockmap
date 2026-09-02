@@ -3,10 +3,10 @@ name: deploy
 on:
   push:
     branches: [main]
-  # fetch-twse commit 資料時用的是預設 GITHUB_TOKEN，不會觸發 push 事件；
+  # 資料類 workflow 用預設 GITHUB_TOKEN commit，不會觸發 push 事件；
   # 改用 workflow_run 在資料更新後接續部署。
   workflow_run:
-    workflows: [fetch-twse]
+    workflows: [fetch-twse, backfill, rank-universe]
     types: [completed]
   workflow_dispatch:
 
@@ -38,6 +38,8 @@ jobs:
 
       - name: Build web
         working-directory: web
+        env:
+          VITE_QUOTE_URL: ${{ vars.VITE_QUOTE_URL }}
         run: |
           npm ci
           npm run build

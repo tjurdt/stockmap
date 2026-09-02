@@ -33,6 +33,14 @@ class PriceHistory:
     def adj_series(self, code: str) -> list[float]:
         return list(self._d.get(code, {}).get("adj", []))
 
+    def series(self, code: str) -> tuple[list[str], list[float], list[float]]:
+        """回傳 (dates, adj, raw)，三者等長、由舊到新。"""
+        h = self._d.get(code, {})
+        return list(h.get("dates", [])), list(h.get("adj", [])), list(h.get("raw", []))
+
+    def codes(self) -> list[str]:
+        return list(self._d)
+
     def last_date(self, code: str) -> str | None:
         dates = self._d.get(code, {}).get("dates", [])
         return dates[-1] if dates else None
@@ -44,6 +52,15 @@ class PriceHistory:
         return self._d
 
     # ── 更新 ──────────────────────────────────────────────────
+    def set_series(self, code: str, dates: list[str], adj: list[float], raw: list[float]) -> None:
+        """整段覆寫某股的序列（歷史回填用）。"""
+        self._d[code] = {"dates": list(dates), "adj": list(adj), "raw": list(raw)}
+
+    def prune(self, keep: set[str]) -> None:
+        """移除不在 keep 內的代號（被踢出名單的股票），控制檔案大小。"""
+        for code in [c for c in self._d if c not in keep]:
+            del self._d[code]
+
     def record(
         self,
         code: str,
@@ -53,10 +70,13 @@ class PriceHistory:
         adj_factor: float | None = None,
         cap: int = CAP,
     ) -> bool:
-        """記錄某股某交易日的收盤。回傳 True 表示有寫入，False 表示同日重複略過。"""
+        """記錄某股某交易日的收盤。回傳 True 表示有寫入，False 表示略過。
+
+        略過條件：date 不晚於序列現有的最後一天（同日重跑，或回填資料比 TWSE 端點更新）。
+        """
         h = self._d.setdefault(code, {"dates": [], "adj": [], "raw": []})
-        if h["dates"] and h["dates"][-1] == date:
-            return False  # 同日重複執行，不重複寫入
+        if h["dates"] and date <= h["dates"][-1]:
+            return False
 
         if adj_factor and h["adj"]:  # 除權息當日：回補歷史還原價
             h["adj"] = [round(p * adj_factor, 6) for p in h["adj"]]

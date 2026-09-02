@@ -8,7 +8,7 @@ from pathlib import Path
 
 import jsonschema
 
-from .config import Constituent
+from .config import RANKED_AT, Constituent
 from .factors import compute_all
 from .paths import SNAPSHOT_SCHEMA, TPE
 from .prices import PriceHistory
@@ -58,13 +58,16 @@ def build_snapshot(
         )
         for c in universe
     ]
-    return {
+    snapshot = {
         "schemaVersion": SCHEMA_VERSION,
         "asOf": as_of,
         "generatedAt": datetime.now(TPE).isoformat(timespec="seconds"),
         "histLen": history.max_len(),
         "stocks": stocks,
     }
+    if RANKED_AT:
+        snapshot["universeRankedAt"] = RANKED_AT
+    return snapshot
 
 
 def validate_snapshot(snapshot: dict) -> None:

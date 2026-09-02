@@ -30,6 +30,10 @@ export const snapshotSchema = z.object({
   asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   generatedAt: z.string(),
   histLen: z.number().int().nonnegative(),
+  universeRankedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   stocks: z.array(stockSchema).min(1),
 })
 

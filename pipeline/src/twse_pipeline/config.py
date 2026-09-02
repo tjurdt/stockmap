@@ -24,5 +24,11 @@ def load_universe(path: Path | None = None) -> list[Constituent]:
     ]
 
 
+def universe_ranked_at(path: Path | None = None) -> str | None:
+    raw = json.loads((path or UNIVERSE_SCHEMA).read_text("utf-8"))
+    return raw.get("rankedAt")
+
+
 UNIVERSE: list[Constituent] = load_universe()
 CODES: frozenset[str] = frozenset(c.code for c in UNIVERSE)
+RANKED_AT: str | None = universe_ranked_at()

@@ -45,3 +45,6 @@ React hook → `hooks/`。
 | `/ranking` | `features/ranking/RankingPage.tsx` | 可切換排序因子、多因子綜合評分、分位數上色 |
 | `/stock/:code` | `features/stock/StockPage.tsx` | 還原價走勢圖（visx `@visx/shape` LinePath + `loadFactorHistory`） |
 | `/backtest` | `features/backtest/BacktestPage.tsx` | 回測引擎放 `engine.worker.ts`，主執行緒只畫權益曲線 |
+
+`data/history/factors-YYYY.jsonl` 已有約一年的每日全因子快照（`loadFactorHistory(year)` 讀取），
+`/backtest` 與 `/stock` 可直接開工。即時報價相關：`lib/live.ts`、`lib/overlay.ts`、`hooks/useLiveQuotes.ts`。

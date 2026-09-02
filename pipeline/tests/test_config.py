@@ -1,16 +1,20 @@
-from twse_pipeline.config import CODES, UNIVERSE, load_universe
+from twse_pipeline.config import CODES, RANKED_AT, UNIVERSE, load_universe
 
 
-def test_universe_loads_from_schema_file():
+def test_universe_has_20_valid_constituents():
+    # schema/universe.json 由 twse_pipeline.universe_rank 產生，內容會變 —— 只驗結構
     assert len(UNIVERSE) == 20
-    assert UNIVERSE[0].code == "2330"
-    assert UNIVERSE[0].name == "台積電"
-    assert UNIVERSE[0].shares_m == 25930
+    assert all(len(c.code) == 4 and c.code.isdigit() for c in UNIVERSE)
+    assert all(c.name and c.shares_m > 0 for c in UNIVERSE)
+    assert "2330" in CODES  # 台積電永遠在市值前 20
+
+
+def test_ranked_at_is_iso_date_or_none():
+    assert RANKED_AT is None or len(RANKED_AT) == 10
 
 
 def test_codes_matches_universe():
     assert frozenset(c.code for c in UNIVERSE) == CODES
-    assert all(len(c) == 4 and c.isdigit() for c in CODES)
 
 
 def test_load_universe_is_pure(tmp_path):

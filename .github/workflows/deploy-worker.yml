@@ -1,0 +1,26 @@
+name: deploy-worker
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    # 設 repo variable DEPLOY_WORKER=true 且備妥 Cloudflare secret 後才會跑
+    if: vars.DEPLOY_WORKER == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
