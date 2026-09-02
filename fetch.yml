@@ -1,0 +1,36 @@
+name: fetch-twse
+
+on:
+  schedule:
+    # 台北時間 15:40（UTC 07:40），週一至週五。國定假日休市時腳本會自行跳過。
+    - cron: '40 7 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-twse
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch TWSE data
+        run: python scripts/fetch_twse.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/
+          git diff --staged --quiet && echo "no change" && exit 0
+          git commit -m "data: $(date -u +%Y-%m-%d)"
+          git push
