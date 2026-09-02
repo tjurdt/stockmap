@@ -11,8 +11,21 @@
 const MIS = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp'
 
 export interface Env {
-  /** 允許的來源（部署後設成你的 Pages origin，如 https://tjurdt.github.io）。預設 '*'。 */
+  /** 逗號分隔的允許來源。留空 = 內建清單（GitHub Pages + localhost）。設 "*" = 全開。 */
   ALLOWED_ORIGIN?: string
+}
+
+const DEFAULT_ALLOWED = ['https://tjurdt.github.io']
+
+/** 依請求 Origin 決定回什麼 Access-Control-Allow-Origin。 */
+function resolveOrigin(reqOrigin: string | null, env: Env): string {
+  const configured = (env.ALLOWED_ORIGIN ?? '').trim()
+  if (configured === '*') return '*'
+  const allow = configured ? configured.split(',').map((s) => s.trim()) : DEFAULT_ALLOWED
+  if (reqOrigin && (allow.includes(reqOrigin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(reqOrigin))) {
+    return reqOrigin
+  }
+  return allow[0] ?? '*'
 }
 
 interface MisRow {
@@ -26,7 +39,7 @@ interface MisRow {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const cors: Record<string, string> = {
-      'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN ?? '*',
+      'Access-Control-Allow-Origin': resolveOrigin(req.headers.get('Origin'), env),
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       Vary: 'Origin',
     }

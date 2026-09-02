@@ -3,22 +3,26 @@
 瀏覽器被 CORS 擋在 TWSE MIS 盤中 API 外。這個 worker 在 Cloudflare 邊緣代理該端點並加上 CORS
 header，讓前端可以在「即時」模式下抓盤中報價。資料仍是 TWSE 自己的延遲（約 20 秒），非逐筆。
 
-## 部署（一次性）
+## 已部署
+
+目前跑在 `https://stockmap-quote.tjurdt.workers.dev/quote`，前端 `web/src/lib/live.ts` 的
+`DEFAULT_QUOTE_URL` 直接指向它，所以「即時」開關預設就會出現，不需要設任何 GitHub variable。
+
+CORS 允許來源見 `src/index.ts` 的 `DEFAULT_ALLOWED`（GitHub Pages + localhost）。要改 Pages 網址，
+在 `wrangler.toml` 加 `[vars] ALLOWED_ORIGIN = "https://新網址"` 再重新部署。
+
+## 重新部署 / 改到別的帳號
 
 ```bash
-cd worker
+cd worker            # 一定要在這個目錄，不是 C:\Users\你
 npm install
-npx wrangler login              # 開瀏覽器登入免費 Cloudflare 帳號
-npx wrangler deploy             # 部署，輸出類似 https://stockmap-quote.<你的子網域>.workers.dev
+npx wrangler login   # 開瀏覽器登入免費 Cloudflare 帳號
+npx wrangler deploy  # 輸出你的 worker 網址
 ```
 
-部署後：
-
-1. 編輯 `wrangler.toml` 的 `ALLOWED_ORIGIN`，改成你的 Pages origin（例如 `https://tjurdt.github.io`），
-   再 `npx wrangler deploy` 一次。
-2. 到 GitHub repo → Settings → Secrets and variables → Actions → **Variables** 新增
-   `VITE_QUOTE_URL = https://stockmap-quote.<你的子網域>.workers.dev/quote`
-3. 下次 `deploy` workflow 跑完，前端就會出現「即時」開關。
+換帳號時：改 `web/src/lib/live.ts` 的 `DEFAULT_QUOTE_URL`（或設 repo variable
+`VITE_QUOTE_URL`），並在 dashboard 註冊一個 workers.dev 子網域
+（Workers → 右上 Subdomain）。
 
 ## 自動部署（選用）
 

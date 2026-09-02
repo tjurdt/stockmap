@@ -3,6 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2025-09-01"
 workers_dev = true
 
-[vars]
-# 部署後改成你的 GitHub Pages origin，例如 "https://tjurdt.github.io"
-ALLOWED_ORIGIN = "*"
+# CORS 允許來源。不設 = 內建清單（GitHub Pages + localhost，見 src/index.ts 的 DEFAULT_ALLOWED）。
+# 要換 Pages 網址就在這裡設，例如：
+# [vars]
+# ALLOWED_ORIGIN = "https://你的帳號.github.io"
