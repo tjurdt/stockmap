@@ -49,6 +49,14 @@ def num(v):
         return None
 
 
+def roc_to_iso(roc):
+    """民國日期字串 1150902 -> '2026-09-02'。"""
+    s = str(roc).strip()
+    if len(s) < 7 or not s.isdigit():
+        return None
+    return f"{int(s[:-4]) + 1911:04d}-{s[-4:-2]}-{s[-2:]}"
+
+
 def pick(row, *needles):
     """TWT49U 的欄位名在中英文之間變動過，用關鍵字模糊比對取值。"""
     for k, v in row.items():
@@ -94,13 +102,23 @@ def momentum(series, lookback, skip=0):
 
 def main():
     DATA.mkdir(exist_ok=True)
-    today = datetime.now(TPE).date().isoformat()
 
-    day = {r["Code"]: r for r in get(EP_DAY) if r.get("Code") in CODES}
+    rows = get(EP_DAY)
+    day = {r["Code"]: r for r in rows if r.get("Code") in CODES}
     val = {r["Code"]: r for r in get(EP_VAL) if r.get("Code") in CODES}
     if not day:
         print("休市或資料尚未更新，跳過。")
         return 0
+
+    # 交易日以 API 自己回報的 Date 為準，不用 runner 的時鐘。
+    # 端點只供最新一個交易日，遇到假日會回傳「上一個交易日」的舊資料，
+    # 若用當天日期標記就會把同一天的收盤重複寫進序列，動能全毀。
+    dates = {roc_to_iso(r.get("Date")) for r in day.values()} - {None}
+    if len(dates) != 1:
+        print(f"警告：回傳日期不一致 {dates}，跳過。", file=sys.stderr)
+        return 1
+    today = dates.pop()
+    print(f"交易日：{today}（executed {datetime.now(TPE).date().isoformat()}）")
 
     factors = adjustment_factors()
 
