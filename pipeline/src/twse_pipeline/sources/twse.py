@@ -4,6 +4,7 @@
   STOCK_DAY_ALL — 每日收盤行情（收盤價、漲跌、成交金額、Date）
   BWIBBU_ALL    — 本益比 / 股價淨值比 / 殖利率
   TWT49U        — 除權除息計算結果表（用來算還原因子）
+  t187ap03_L    — 全上市公司基本資料（已發行股數、公司簡稱；用於動態排名）
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ BASE = "https://openapi.twse.com.tw/v1"
 EP_DAY = f"{BASE}/exchangeReport/STOCK_DAY_ALL"
 EP_VALUATION = f"{BASE}/exchangeReport/BWIBBU_ALL"
 EP_EXRIGHT = f"{BASE}/exchangeReport/TWT49U"
+EP_COMPANY = f"{BASE}/opendata/t187ap03_L"
 
 _UA = "stockmap-pipeline/0.1 (+https://github.com/tjurdt/stockmap)"
 Row = dict[str, str]
@@ -36,3 +38,7 @@ def fetch_valuation_all() -> list[Row]:
 
 def fetch_exright() -> list[Row]:
     return _get(EP_EXRIGHT)
+
+
+def fetch_company_info() -> list[Row]:
+    return _get(EP_COMPANY)

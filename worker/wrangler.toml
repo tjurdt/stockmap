@@ -1,0 +1,8 @@
+name = "stockmap-quote"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+# 部署後改成你的 GitHub Pages origin，例如 "https://tjurdt.github.io"
+ALLOWED_ORIGIN = "*"

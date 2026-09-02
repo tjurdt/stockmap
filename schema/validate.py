@@ -24,6 +24,13 @@ def _load(p: pathlib.Path) -> dict:
 def main() -> int:
     errors: list[str] = []
 
+    universe = SCHEMA / "universe.json"
+    try:
+        jsonschema.validate(_load(universe), _load(SCHEMA / "universe.schema.json"))
+        print(f"ok  {universe.relative_to(ROOT)}")
+    except jsonschema.ValidationError as e:
+        errors.append(f"{universe.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})")
+
     latest = DATA / "latest.json"
     if latest.exists():
         try:

@@ -35,10 +35,17 @@ export function parseHistoryJsonl(text: string): HistoryRow[] {
     .map((l) => historyRowSchema.parse(JSON.parse(l)))
 }
 
-/** 載入指定年度的因子歷史。檔案不存在時回空陣列。 */
+/** 載入指定年度的因子歷史。檔案不存在時回空陣列；開發環境退回 public/demo。 */
 export async function loadFactorHistory(year: number): Promise<HistoryRow[]> {
-  const res = await fetch(`${import.meta.env.BASE_URL}data/history/factors-${year}.jsonl`)
-  if (res.status === 404) return []
-  if (!res.ok) throw new Error(`HTTP ${res.status} 讀取 factor history ${year}`)
-  return parseHistoryJsonl(await res.text())
+  const base = import.meta.env.BASE_URL
+  for (const path of [
+    `${base}data/history/factors-${year}.jsonl`,
+    ...(import.meta.env.DEV ? [`${base}demo/history/factors-${year}.jsonl`] : []),
+  ]) {
+    const res = await fetch(path)
+    if (res.status === 404) continue
+    if (!res.ok) throw new Error(`HTTP ${res.status} 讀取 factor history ${year}`)
+    return parseHistoryJsonl(await res.text())
+  }
+  return []
 }

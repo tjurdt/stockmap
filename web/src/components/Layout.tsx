@@ -31,8 +31,9 @@ export function Layout({ asOf, children }: { asOf?: ReactNode; children: ReactNo
       {children}
       <footer className={styles.footer}>
         資料來源：臺灣證券交易所 OpenAPI（<code>STOCK_DAY_ALL</code>、<code>BWIBBU_ALL</code>、
-        <code>TWT49U</code>
-        ），盤後更新，非逐筆即時報價。動能以還原權值收盤價計算。僅供研究，不構成投資建議。
+        <code>TWT49U</code>）與 FinMind（歷史回填）。市值前 20 名單每週依全市場市值自動重排。
+        動能以還原權值收盤價計算。盤後更新；「即時」模式為 TWSE 盤中延遲報價（約 20 秒），非逐筆。
+        僅供研究，不構成投資建議。
       </footer>
     </div>
   )

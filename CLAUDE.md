@@ -8,9 +8,18 @@
 | --- | --- | --- |
 | `web/` | 前端（Vite + React + TS，唯一的 JS app） | TypeScript |
 | `pipeline/` | 盤後資料管線（可安裝套件 `twse_pipeline`） | Python 3.12 |
+| `worker/` | 即時報價 proxy（Cloudflare Worker，選用） | TypeScript |
 | `schema/` | 契約與設定的單一事實來源 | JSON |
 | `data/` | 管線產出、由 Actions commit（**勿手改**） | JSON / JSONL |
 | `docs/` | 架構與擴充 playbook | Markdown |
+
+## 管線進入點
+
+| 模組 | 觸發 | 做什麼 |
+| --- | --- | --- |
+| `twse_pipeline.daily` | `fetch-twse`（每交易日）| 抓 TWSE → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` |
+| `twse_pipeline.backfill` | `backfill`（手動）| FinMind 原始價 + 配息還原 → 回填約一年 `prices.json` + 整檔重建 `data/history/` |
+| `twse_pipeline.universe_rank` | `rank-universe`（每週一）| 全市場市值 → 重排 `schema/universe.json`（含進出場門檻），新進榜股自動 backfill |
 
 資料流：`Actions cron → pipeline 抓 TWSE OpenAPI → 寫 data/ → commit → deploy.yml build web + 併入 data/ → GitHub Pages`。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -31,15 +40,21 @@ python -m pip install -e "pipeline[dev]"
 pytest pipeline
 ruff check pipeline && ruff format --check pipeline && mypy pipeline/src
 python -m twse_pipeline.daily        # 實際抓資料並覆寫 data/（會打外部 API）
-python schema/validate.py            # 驗證 data/ 符合 schema/
+python -m twse_pipeline.backfill     # 一次性回填約一年（FinMind，會打外部 API）
+python -m twse_pipeline.universe_rank  # 重排市值前 20 名單
+python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 ```
+
+即時報價 proxy（在 `worker/`，選用，見 `worker/README.md`）：`npm install && npx wrangler deploy`。
 
 ## 不變式（改動前先讀）
 
-1. **`data/latest.json` 是前端唯一資料契約。** 前端不在瀏覽器直連證交所。欄位只能往後相容地加；
-   破壞性變更要 bump `schemaVersion`（`schema/snapshot.schema.json` + `web/src/lib/data.ts` + 管線）。
-2. **成分股與在外流通股數只在 `schema/universe.json`。** 別在別處再寫一份。
+1. **`data/latest.json` 是前端唯一資料契約。** 前端不在瀏覽器直連證交所（`worker/` 例外，且只給盤中
+   延遲報價）。欄位只能往後相容地加；破壞性變更要 bump `schemaVersion`。
+2. **成分股名單只在 `schema/universe.json`，且由 `universe_rank` 產生 —— 勿手改。**
+   前端從 snapshot 讀，不讀這個檔。
 3. **因子數學只在 `pipeline/src/twse_pipeline/factors.py`，而且要有測試。** 前端只視覺化算好的值。
+   即時模式（`web/src/lib/overlay.ts`）只覆寫價/漲跌/市值，動能維持收盤。
 4. **因子 key 三處對齊**：`factors.py` 的 `FACTORS`、`schema/snapshot.schema.json`、
    `web/src/lib/metrics.ts` 的 `METRICS`。
 5. **前端 zod schema 與 JSON Schema 對齊**：`web/src/lib/data.contract.test.ts` 會在 drift 時失敗。

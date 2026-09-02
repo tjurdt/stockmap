@@ -1,3 +1,4 @@
+import { liveAvailable } from '../../lib/live'
 import { METRIC_KEYS, METRICS, type MetricKey } from '../../lib/metrics'
 import type { ScatterOptions } from './FactorScatter'
 import styles from './scatter.module.css'
@@ -6,6 +7,8 @@ interface Props {
   opts: ScatterOptions
   onChange: (patch: Partial<ScatterOptions>) => void
   status: string
+  live: boolean
+  onLiveChange: (v: boolean) => void
 }
 
 function MetricSelect({
@@ -59,7 +62,7 @@ function Check({
   )
 }
 
-export function Controls({ opts, onChange, status }: Props) {
+export function Controls({ opts, onChange, status, live, onLiveChange }: Props) {
   return (
     <div className={styles.panel}>
       <MetricSelect
@@ -98,6 +101,14 @@ export function Controls({ opts, onChange, status }: Props) {
         checked={opts.medianLines}
         onChange={(v) => onChange({ medianLines: v })}
       />
+      {liveAvailable && (
+        <Check
+          id="live"
+          label="即時報價（盤中，約 20 秒延遲）"
+          checked={live}
+          onChange={onLiveChange}
+        />
+      )}
       <div className={styles.status}>{status}</div>
     </div>
   )

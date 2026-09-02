@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Layout } from '../../components/Layout'
+import { useLiveQuotes } from '../../hooks/useLiveQuotes'
 import { useSnapshot } from '../../hooks/useSnapshot'
+import { applyLive } from '../../lib/overlay'
 import { Controls } from './Controls'
 import { FactorScatter, type ScatterOptions } from './FactorScatter'
 import { StockTable } from './StockTable'
@@ -19,7 +21,13 @@ const DEFAULT_OPTS: ScatterOptions = {
 export function ScatterPage() {
   const state = useSnapshot()
   const [opts, setOpts] = useState<ScatterOptions>(DEFAULT_OPTS)
+  const [wantLive, setWantLive] = useState(false)
   const patch = (p: Partial<ScatterOptions>) => setOpts((o) => ({ ...o, ...p }))
+
+  const snapStocks = state.status === 'ready' ? state.data.stocks : []
+  const codes = useMemo(() => snapStocks.map((s) => s.code), [snapStocks])
+  const { quotes, isLive } = useLiveQuotes(codes, wantLive)
+  const stocks = isLive ? applyLive(snapStocks, quotes) : snapStocks
 
   if (state.status === 'error') {
     return (
@@ -33,15 +41,33 @@ export function ScatterPage() {
     )
   }
 
+  const ranked =
+    state.status === 'ready' && state.data.universeRankedAt
+      ? ` · 名單 ${state.data.universeRankedAt}`
+      : ''
   const asOf =
-    state.status === 'ready' ? `收盤 ${state.data.asOf} · 序列 ${state.data.histLen} 日` : '載入中…'
-  const stocks = state.status === 'ready' ? state.data.stocks : []
-  const status = state.status === 'ready' ? `已載入 ${stocks.length} 檔` : '載入中…'
+    state.status !== 'ready'
+      ? '載入中…'
+      : isLive
+        ? `即時（約 20 秒延遲）· 動能為 ${state.data.asOf} 收盤${ranked}`
+        : `收盤 ${state.data.asOf} · 序列 ${state.data.histLen} 日${ranked}`
+  const status =
+    state.status !== 'ready'
+      ? '載入中…'
+      : isLive
+        ? `即時 ${quotes.size} 檔`
+        : `已載入 ${stocks.length} 檔`
 
   return (
     <Layout asOf={asOf}>
       <div className={styles.layout}>
-        <Controls opts={opts} onChange={patch} status={status} />
+        <Controls
+          opts={opts}
+          onChange={patch}
+          status={status}
+          live={wantLive}
+          onLiveChange={setWantLive}
+        />
         <div>
           {stocks.length > 0 ? (
             <>

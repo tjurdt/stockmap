@@ -50,5 +50,18 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install jsonschema
-      - name: Validate committed data/ against schema/
+      - name: Validate committed data/ + schema/universe.json
         run: python schema/validate.py
+
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run typecheck

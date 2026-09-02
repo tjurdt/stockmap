@@ -53,6 +53,7 @@ def main() -> int:
         if close is None:
             continue
         history.record(c.code, today, close, adj_factor=factors.get(c.code))
+    history.prune(set(CODES))  # 移除已被踢出名單的股票
     history.save(PRICES_JSON)
 
     snapshot = build_snapshot(today, UNIVERSE, day_by_code, val_by_code, history)

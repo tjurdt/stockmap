@@ -23,6 +23,11 @@
       "minimum": 0,
       "description": "最長還原價序列的交易日數；動能欄位在序列不足時為 null"
     },
+    "universeRankedAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "市值前 20 名單最後一次自動重排的日期（無此欄位表示名單為手動維護）"
+    },
     "stocks": {
       "type": "array",
       "minItems": 1,

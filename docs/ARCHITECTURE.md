@@ -55,6 +55,28 @@
 
 新的「重」功能預設放管線。只有當它依賴使用者即時輸入、無法預先算好時，才放 web worker。
 
+## 動態名單
+
+`schema/universe.json` 由 `twse_pipeline.universe_rank` 每週一重排：抓 `STOCK_DAY_ALL`（全市場收盤）+
+`opendata/t187ap03_L`（全上市公司已發行股數）→ 算每檔市值 → 取前 20。**進出場門檻**（`KEEP_UNTIL_RANK=25`）
+讓在 20/21 名邊界擺盪的股票不會每週被換掉。名單有變時，`rank-universe` workflow 會自動對新進榜股
+跑 `backfill`。被踢出的股票，其價格序列在下次 `daily` 由 `PriceHistory.prune` 清掉。
+
+## 歷史回填
+
+`twse_pipeline.backfill` 用 FinMind `TaiwanStockPrice`（原始收盤）+ `TaiwanStockDividend`（配息/除息日）
+自行計算還原因子（`build_adjusted_series`，鏡射 `adjustments.py` 的 `ref/before`），建出約一年的
+還原權值序列。序列最後一天無後續除息 → `adj[-1] == raw[-1]`，天然接回每日 TWSE 管線。
+回填後 `history.rebuild_from_prices` 用重建的序列整檔重寫 `data/history/factors-YYYY.jsonl`
+（PE/PB/DY 無歷史 → null，之後每日補上）。
+
+## 即時報價
+
+純靜態站被 CORS 擋在 TWSE 外。`worker/`（Cloudflare Worker，選用）在邊緣代理
+`mis.twse.com.tw/stock/api/getStockInfo.jsp` 並加 CORS header。前端 `lib/live.ts` 在盤中每 20 秒輪詢，
+`lib/overlay.ts` 只把即時價疊到 `close`/`chgPct`/`mcap`，動能維持收盤值（需完整序列）。
+`VITE_QUOTE_URL` 未設定時整個功能停用。
+
 ## 已知取捨
 
 - `data/prices.json` 每日整檔重寫再 commit → git 歷史會隨時間長大（序列上限 400 日，單檔約 50–80 KB）。
