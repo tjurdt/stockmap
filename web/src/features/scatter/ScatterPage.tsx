@@ -56,7 +56,9 @@ export function ScatterPage() {
       ? '載入中…'
       : isLive
         ? `即時 ${quotes.size} 檔`
-        : `已載入 ${stocks.length} 檔`
+        : wantLive
+          ? `已載入 ${stocks.length} 檔 · 即時待盤中（09:00–13:35）`
+          : `已載入 ${stocks.length} 檔`
 
   return (
     <Layout asOf={asOf}>
