@@ -21,9 +21,11 @@ const responseSchema = z.object({
 
 export type LiveQuote = z.infer<typeof quoteSchema>
 
-// 已部署的 proxy（見 worker/）。用 repo variable VITE_QUOTE_URL 可覆寫；設成空字串則停用「即時」。
+// 已部署的 proxy（見 worker/）。
+// VITE_QUOTE_URL 未設定或空字串 → 用預設；設成網址 → 用你自己的 worker；設成 "off" → 停用「即時」。
 const DEFAULT_QUOTE_URL = 'https://stockmap-quote.tjurdt.workers.dev/quote'
-export const QUOTE_URL: string = import.meta.env.VITE_QUOTE_URL ?? DEFAULT_QUOTE_URL
+const configured = (import.meta.env.VITE_QUOTE_URL ?? '').trim()
+export const QUOTE_URL: string = configured === 'off' ? '' : configured || DEFAULT_QUOTE_URL
 export const liveAvailable = QUOTE_URL !== ''
 
 export async function fetchLiveQuotes(codes: string[]): Promise<Map<string, LiveQuote>> {
