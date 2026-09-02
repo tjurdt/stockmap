@@ -22,8 +22,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install pipeline
+        run: python -m pip install -e pipeline
+
       - name: Fetch TWSE data
-        run: python scripts/fetch_twse.py
+        run: python -m twse_pipeline.daily
 
       - name: Commit if changed
         run: |
