@@ -1,0 +1,20 @@
+/* 設計 token —— 沿用原 index.html 的配色與字級。新元件一律引用變數，不寫死色碼。 */
+:root {
+  --bg: #e9ebee;
+  --surface: #ffffff;
+  --ink: #16202b;
+  --muted: #69747f;
+  --line: #c7ced5;
+  --hair: #dde2e7;
+
+  --up: #c0323c; /* 台股慣例：漲=紅 */
+  --down: #1b7a5c; /* 跌=綠 */
+  --flat: #7c8792;
+  --accent: #1f4e79;
+
+  --font-sans:
+    system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+
+  --maxw: 1180px;
+}

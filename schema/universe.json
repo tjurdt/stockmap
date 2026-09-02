@@ -1,0 +1,26 @@
+{
+  "$comment": "台股成分股名單與在外流通股數 — 唯一事實來源 (single source of truth)。Python 管線從此讀取；股數在除權/增資後需手動更新，否則市值會偏差。sharesOutstandingM = 在外流通股數（百萬股）。",
+  "asOf": "2026-09-02",
+  "constituents": [
+    { "code": "2330", "name": "台積電",       "sharesOutstandingM": 25930 },
+    { "code": "2317", "name": "鴻海",         "sharesOutstandingM": 13861 },
+    { "code": "2454", "name": "聯發科",       "sharesOutstandingM": 1601 },
+    { "code": "2308", "name": "台達電",       "sharesOutstandingM": 2598 },
+    { "code": "2382", "name": "廣達",         "sharesOutstandingM": 3864 },
+    { "code": "2891", "name": "中信金",       "sharesOutstandingM": 19900 },
+    { "code": "2882", "name": "國泰金",       "sharesOutstandingM": 14900 },
+    { "code": "2881", "name": "富邦金",       "sharesOutstandingM": 14150 },
+    { "code": "2412", "name": "中華電",       "sharesOutstandingM": 7757 },
+    { "code": "3711", "name": "日月光投控",   "sharesOutstandingM": 4360 },
+    { "code": "2303", "name": "聯電",         "sharesOutstandingM": 12494 },
+    { "code": "2886", "name": "兆豐金",       "sharesOutstandingM": 14700 },
+    { "code": "2884", "name": "玉山金",       "sharesOutstandingM": 16600 },
+    { "code": "1216", "name": "統一",         "sharesOutstandingM": 5681 },
+    { "code": "2892", "name": "第一金",       "sharesOutstandingM": 14300 },
+    { "code": "3231", "name": "緯創",         "sharesOutstandingM": 2920 },
+    { "code": "2002", "name": "中鋼",         "sharesOutstandingM": 15731 },
+    { "code": "2357", "name": "華碩",         "sharesOutstandingM": 743 },
+    { "code": "3034", "name": "聯詠",         "sharesOutstandingM": 608 },
+    { "code": "2345", "name": "智邦",         "sharesOutstandingM": 559 }
+  ]
+}

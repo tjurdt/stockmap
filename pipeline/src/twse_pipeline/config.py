@@ -1,0 +1,28 @@
+"""從 schema/universe.json 讀成分股設定 —— 成分股名單與在外流通股數的唯一事實來源。"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from .paths import UNIVERSE_SCHEMA
+
+
+@dataclass(frozen=True)
+class Constituent:
+    code: str
+    name: str
+    shares_m: float  # 在外流通股數（百萬股）
+
+
+def load_universe(path: Path | None = None) -> list[Constituent]:
+    raw = json.loads((path or UNIVERSE_SCHEMA).read_text("utf-8"))
+    return [
+        Constituent(c["code"], c["name"], float(c["sharesOutstandingM"]))
+        for c in raw["constituents"]
+    ]
+
+
+UNIVERSE: list[Constituent] = load_universe()
+CODES: frozenset[str] = frozenset(c.code for c in UNIVERSE)
