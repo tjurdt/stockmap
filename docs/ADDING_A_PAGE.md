@@ -38,13 +38,15 @@ React hook → `hooks/`。
 
 6. `cd web && npm run check` 全綠再送 PR。
 
-## 目前的空殼（已接好資料層，待實作）
+## 頁面現況
 
-| Route | 檔案 | 下一步 |
+| Route | 檔案 | 狀態 |
 | --- | --- | --- |
-| `/ranking` | `features/ranking/RankingPage.tsx` | 可切換排序因子、多因子綜合評分、分位數上色 |
-| `/stock/:code` | `features/stock/StockPage.tsx` | 還原價走勢圖（visx `@visx/shape` LinePath + `loadFactorHistory`） |
-| `/backtest` | `features/backtest/BacktestPage.tsx` | 回測引擎放 `engine.worker.ts`，主執行緒只畫權益曲線 |
+| `/`（因子散佈圖） | `features/scatter/` | 完成；含即時 overlay + 報價清單 |
+| `/backtest` | `features/backtest/` | 完成：橫斷面因子排名回測（`engine.ts` 純函式 + `EquityChart`） |
+| `/ranking` | `features/ranking/RankingPage.tsx` | 雛型；可加：切換排序因子、多因子綜合評分、分位數上色 |
+| `/stock/:code` | `features/stock/StockPage.tsx` | 雛型；可加：還原價走勢圖（`@visx/shape` LinePath + `loadFactorHistory`） |
 
-`data/history/factors-YYYY.jsonl` 已有約一年的每日全因子快照（`loadFactorHistory(year)` 讀取），
-`/backtest` 與 `/stock` 可直接開工。即時報價相關：`lib/live.ts`、`lib/overlay.ts`、`hooks/useLiveQuotes.ts`。
+`data/history/factors-YYYY.jsonl`（`loadAllFactorHistory()` 讀全部年度）是回測與個股走勢的資料來源。
+即時報價相關：`lib/live.ts`、`lib/overlay.ts`、`hooks/useLiveQuotes.ts`。
+回測引擎 `features/backtest/engine.ts` 目前跑主執行緒（資料量小）；歷史若拉到十幾年再搬 web worker。

@@ -49,6 +49,26 @@ def fetch_prices(code: str, start: str, end: str) -> list[tuple[str, float]]:
     return out
 
 
+def fetch_valuation_history(code: str, start: str, end: str) -> dict[str, dict[str, float | None]]:
+    """每日本益比 / 股價淨值比 / 殖利率。回傳 {date: {"pe":..,"pb":..,"dy":..}}。"""
+    out: dict[str, dict[str, float | None]] = {}
+    for r in _get("TaiwanStockPER", code, start, end):
+        out[r["date"]] = {
+            "pe": _num(r.get("PER")),
+            "pb": _num(r.get("PBR")),
+            "dy": _num(r.get("dividend_yield")),
+        }
+    return out
+
+
+def _num(v: object) -> float | None:
+    try:
+        f = float(v)  # type: ignore[arg-type]
+        return f if f > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def fetch_dividends(code: str, start: str, end: str) -> list[Dividend]:
     """區間內的除權除息事件，由舊到新。"""
     out: list[Dividend] = []

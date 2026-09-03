@@ -1,6 +1,10 @@
-"""一次性歷史回填：用 FinMind 原始收盤 + 配息自行還原，建立約一年的還原權值序列。
+"""一次性歷史回填：用 FinMind 原始收盤 + 配息自行還原，建立多年還原權值序列。
 
-每日管線（twse_pipeline.daily）仍以 TWSE 為主；本模組只在初次啟用或有新股進榜時跑。
+寫兩份：
+  data/prices.json          — 截斷到最近 CAP 個交易日（每日管線算動能用）
+  data/history/factors-*.jsonl — 完整區間（回測用）
+
+每日管線（twse_pipeline.daily）以 FinMind + TWSE 為主；本模組只在初次啟用或有新股進榜時跑。
 
   python -m twse_pipeline.backfill                # 整個 universe
   python -m twse_pipeline.backfill --codes 2330,2317
@@ -17,9 +21,16 @@ from .config import UNIVERSE
 from .history import rebuild_from_prices
 from .paths import PRICES_JSON
 from .prices import CAP, PriceHistory
-from .sources.finmind import Dividend, fetch_dividends, fetch_prices
+from .sources.finmind import (
+    Dividend,
+    fetch_dividends,
+    fetch_prices,
+    fetch_valuation_history,
+)
 
-LOOKBACK_DAYS = 570  # 日曆日；≈ 390 交易日，> mom121 需要的 250
+Valuation = dict[str, dict[str, dict[str, float | None]]]
+
+LOOKBACK_DAYS = 1830  # 日曆日 ≈ 5 年（回測要夠長；前 ~1 年 mom121 會是 null）
 _THROTTLE_S = 1.5
 
 
@@ -56,8 +67,11 @@ def build_adjusted_series(
     return dates, adj, raw_close
 
 
-def backfill(codes: list[str] | None, *, existing: PriceHistory | None = None) -> PriceHistory:
+def backfill(
+    codes: list[str] | None, *, existing: PriceHistory | None = None, with_valuation: bool = False
+) -> tuple[PriceHistory, Valuation]:
     hist = existing if existing is not None else PriceHistory()
+    valuation: Valuation = {}
     end = date.today()
     start = (end - timedelta(days=LOOKBACK_DAYS)).isoformat()
     targets = codes or [c.code for c in UNIVERSE]
@@ -72,9 +86,14 @@ def backfill(codes: list[str] | None, *, existing: PriceHistory | None = None) -
             continue
         divs = fetch_dividends(code, start, end.isoformat())
         dates, adj, raw_close = build_adjusted_series(raw, divs)
-        hist.set_series(code, dates[-CAP:], adj[-CAP:], raw_close[-CAP:])
-        print(f"  {code}: {len(dates)} 交易日, {len(divs)} 次除息, adj[-1]={adj[-1]}")
-    return hist
+        hist.set_series(code, dates, adj, raw_close)  # 完整區間，不截斷
+        note = ""
+        if with_valuation:
+            time.sleep(_THROTTLE_S)
+            valuation[code] = fetch_valuation_history(code, start, end.isoformat())
+            note = f", 估值 {len(valuation[code])} 天"
+        print(f"  {code}: {len(dates)} 交易日, {len(divs)} 次除息{note}, adj[-1]={adj[-1]}")
+    return hist, valuation
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -83,14 +102,21 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     codes = [c.strip() for c in args.codes.split(",") if c.strip()] or None
 
-    # 部分回填時保留其他股的既有序列；整個 universe 回填則從空的開始
-    existing = PriceHistory.load(PRICES_JSON) if codes else None
-    hist = backfill(codes, existing=existing)
-    hist.prune({c.code for c in UNIVERSE})
-    hist.save(PRICES_JSON)
+    if codes:
+        # 部分回填（新進榜股）：只更新 prices.json，歷史 factor 由每日管線往後補
+        existing = PriceHistory.load(PRICES_JSON)
+        full, _ = backfill(codes, existing=existing)
+        full.prune({c.code for c in UNIVERSE})
+        full.capped(CAP).save(PRICES_JSON)
+        print(f"部分回填完成：{codes}（factor history 不重建）")
+        return 0
 
-    rows = rebuild_from_prices(UNIVERSE, hist)
-    print(f"回填完成，序列最長 {hist.max_len()} 交易日，重建 factor history {rows} 列")
+    # 整個 universe：完整區間重建 factor history（含 PE/PB/DY）+ 截斷寫 prices.json
+    full, valuation = backfill(None, with_valuation=True)
+    full.prune({c.code for c in UNIVERSE})
+    rows = rebuild_from_prices(UNIVERSE, full, valuation=valuation)
+    full.capped(CAP).save(PRICES_JSON)
+    print(f"回填完成，完整序列 {full.max_len()} 交易日，重建 factor history {rows} 列")
     return 0
 
 

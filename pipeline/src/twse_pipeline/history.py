@@ -60,12 +60,18 @@ def validate_history_row(row: dict) -> None:
 
 
 def rebuild_from_prices(
-    universe: list[Constituent], history: PriceHistory, *, history_dir: Path = HISTORY_DIR
+    universe: list[Constituent],
+    history: PriceHistory,
+    *,
+    valuation: dict[str, dict[str, dict[str, float | None]]] | None = None,
+    history_dir: Path = HISTORY_DIR,
 ) -> int:
     """用回填好的價格序列，整檔重建 data/history/factors-YYYY.jsonl。
 
-    PE/PB/DY 無歷史資料 → null（每日管線之後會為新日期補上）。回傳寫入的總列數。
+    valuation：{code: {date: {"pe","pb","dy"}}}（FinMind），沒給則 PE/PB/DY 為 null。
+    回傳寫入的總列數。
     """
+    val = valuation or {}
     per_code = {}
     for c in universe:
         dates, adj, raw = history.series(c.code)
@@ -81,15 +87,16 @@ def rebuild_from_prices(
             if i is None:
                 continue
             factors = compute_all(adj[: i + 1])
+            v = val.get(c.code, {}).get(date, {})
             stocks.append(
                 {
                     "code": c.code,
                     "close": raw[i],
                     "adjClose": adj[i],
                     "mcap": round(raw[i] * c.shares_m / 100, 2),
-                    "pe": None,
-                    "pb": None,
-                    "dy": None,
+                    "pe": v.get("pe"),
+                    "pb": v.get("pb"),
+                    "dy": v.get("dy"),
                     "mom20": _r(factors["mom20"]),
                     "mom60": _r(factors["mom60"]),
                     "mom121": _r(factors["mom121"]),

@@ -66,10 +66,17 @@
 ## 歷史回填
 
 `twse_pipeline.backfill` 用 FinMind `TaiwanStockPrice`（原始收盤）+ `TaiwanStockDividend`（配息/除息日）
-自行計算還原因子（`build_adjusted_series`，鏡射 `adjustments.py` 的 `ref/before`），建出約一年的
-還原權值序列。序列最後一天無後續除息 → `adj[-1] == raw[-1]`，天然接回每日 TWSE 管線。
-回填後 `history.rebuild_from_prices` 用重建的序列整檔重寫 `data/history/factors-YYYY.jsonl`
-（PE/PB/DY 無歷史 → null，之後每日補上）。
+自行計算還原因子（`build_adjusted_series`，鏡射 `adjustments.py` 的 `ref/before`），建出約 5 年的
+還原權值序列。序列最後一天無後續除息 → `adj[-1] == raw[-1]`，天然接回每日管線。寫兩份：
+`data/prices.json` 截斷到最近 400 個交易日（每日算動能用）、`data/history/factors-YYYY.jsonl` 完整區間
+（回測用，`history.rebuild_from_prices` 產生；PE/PB/DY 無歷史 → null，之後每日補上）。
+
+## 回測
+
+`web/src/features/backtest/engine.ts` —— 純函式，橫斷面因子排名策略：每個再平衡日依所選因子
+（`METRICS[key].betterWhen` 決定方向）排名 universe，取前 N 檔等權 / 市值權重持有，隨還原價每日變動，
+下個再平衡日換股，扣交易成本。基準 = 全 universe 等權（每日再平衡）。資料源 `loadAllFactorHistory()`。
+限制：universe 是「目前」前 20，有存活者偏誤；前 ~1 年 mom121 為 null。
 
 ## 盤中報價
 

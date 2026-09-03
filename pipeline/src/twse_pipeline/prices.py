@@ -51,6 +51,12 @@ class PriceHistory:
     def to_dict(self) -> dict[str, dict[str, list]]:
         return self._d
 
+    def capped(self, n: int) -> PriceHistory:
+        """回傳每檔只留最近 n 個交易日的新 PriceHistory（不改動自己）。"""
+        return PriceHistory(
+            {code: {k: v[k][-n:] for k in ("dates", "adj", "raw")} for code, v in self._d.items()}
+        )
+
     # ── 更新 ──────────────────────────────────────────────────
     def set_series(self, code: str, dates: list[str], adj: list[float], raw: list[float]) -> None:
         """整段覆寫某股的序列（歷史回填用）。"""

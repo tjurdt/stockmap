@@ -49,3 +49,14 @@ export async function loadFactorHistory(year: number): Promise<HistoryRow[]> {
   }
   return []
 }
+
+/** 載入所有可用年度的因子歷史（往回找到第一個空缺為止），依日期排序。 */
+export async function loadAllFactorHistory(): Promise<HistoryRow[]> {
+  const thisYear = new Date().getFullYear()
+  const years = await Promise.all(
+    Array.from({ length: 8 }, (_, i) => thisYear - i).map((y) => loadFactorHistory(y)),
+  )
+  const rows = years.flat()
+  rows.sort((a, b) => a.date.localeCompare(b.date))
+  return rows
+}
