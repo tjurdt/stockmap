@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -24,6 +25,10 @@ class Dividend:
     stock: float  # 股票股利（元/股，面額 10）
 
 
+class RateLimited(RuntimeError):
+    """FinMind 免費版小時額度用完。呼叫端應保存進度、稍後重跑。"""
+
+
 def _get(dataset: str, data_id: str, start: str, end: str) -> list[dict]:
     params = {"dataset": dataset, "data_id": data_id, "start_date": start, "end_date": end}
     token = os.environ.get("FINMIND_TOKEN")
@@ -31,11 +36,27 @@ def _get(dataset: str, data_id: str, start: str, end: str) -> list[dict]:
         params["token"] = token
     url = f"{BASE}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310 (固定 https 端點)
-        payload = json.loads(r.read().decode("utf-8"))
-    if payload.get("status") != 200:
-        raise RuntimeError(f"FinMind {dataset}/{data_id}: {payload.get('msg')}")
-    return payload.get("data", [])
+
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310 (固定 https 端點)
+                payload = json.loads(r.read().decode("utf-8"))
+            if payload.get("status") == 200:
+                return payload.get("data", [])
+            rate_limited = "level" in str(payload.get("msg", "")).lower()
+            msg = payload.get("msg")
+        except urllib.error.HTTPError as e:
+            if e.code not in (402, 429):
+                raise
+            rate_limited, msg = True, f"HTTP {e.code}"
+
+        if rate_limited:
+            if attempt == 0:
+                time.sleep(5)
+                continue
+            raise RateLimited(f"FinMind 額度用完（{dataset}/{data_id}）")
+        raise RuntimeError(f"FinMind {dataset}/{data_id}: {msg}")
+    return []
 
 
 def fetch_prices(code: str, start: str, end: str) -> list[tuple[str, float]]:
@@ -58,6 +79,19 @@ def fetch_valuation_history(code: str, start: str, end: str) -> dict[str, dict[s
             "pb": _num(r.get("PBR")),
             "dy": _num(r.get("dividend_yield")),
         }
+    return out
+
+
+def fetch_shares_history(code: str, start: str, end: str) -> dict[str, float]:
+    """已發行普通股數隨時間變化（TaiwanStockShareholding，約每交易日一筆）。
+
+    回傳 {date: 百萬股}，由舊到新。回測算市值用（避免用「現在的股數」套歷史）。
+    """
+    out: dict[str, float] = {}
+    for r in _get("TaiwanStockShareholding", code, start, end):
+        n = _num(r.get("NumberOfSharesIssued"))
+        if n:
+            out[r["date"]] = n / 1e6
     return out
 
 

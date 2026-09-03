@@ -15,12 +15,16 @@ docs/       架構與擴充 playbook
 
 | Workflow | 觸發 | 作用 |
 | --- | --- | --- |
-| `fetch-twse` | 每交易日 15:40 TPE | 抓當日收盤、更新序列、產出 `data/latest.json` |
-| `backfill` | 手動 | 一次性回填約一年歷史（FinMind 原始價 + 配息還原） |
-| `rank-universe` | 每週一 16:00 TPE | 依全市場市值重排前 20 名單，新進榜股自動回填 |
+| `fetch-twse` | 每交易日 14:00 / 18:00 TPE + 隔日補 | 收盤價（FinMind 為主）、更新序列、產出 `data/latest.json` + append `data/history/` |
+| `backfill` | 手動 | 一次性回填約 5 年歷史（價 + 配息 + PE/PB/DY + 歷史股數）。需 `FINMIND_TOKEN` secret |
+| `rank-universe` | 每週一 16:00 TPE | 依全市場市值重排前 60 名單，新進榜股自動回填 |
 | `deploy` | push / 上述資料 workflow 完成後 | build 前端 + 併入 `data/` → GitHub Pages |
-| `ci` | PR / push | web + pipeline + schema 檢查 |
-| `deploy-worker` | push `worker/**`（需設定）| 部署即時報價 proxy |
+| `ci` | PR / push | web + pipeline + schema + worker 檢查 |
+| `deploy-worker` | push `worker/**`（需設定）| 部署盤中報價 proxy |
+
+**`FINMIND_TOKEN`**：整個 universe 的 `backfill` 會超過 FinMind 免費未登入的小時額度。
+到 [finmindtrade.com](https://finmindtrade.com) 免費註冊拿 token，設成 repo secret `FINMIND_TOKEN`。
+（撞到額度時 `backfill` 會保留 `data/history/_backfill` 快取，重跑續抓。）
 
 架構、契約邊界、計算分工見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 給 AI 協作與日常開發的規則見 [CLAUDE.md](CLAUDE.md)。

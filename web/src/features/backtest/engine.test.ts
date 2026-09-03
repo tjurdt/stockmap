@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { HistoryRow } from '../../lib/history'
 import { runBacktest } from './engine'
 
-function row(date: string, stocks: { code: string; adj: number; f: number }[]): HistoryRow {
+function row(
+  date: string,
+  stocks: { code: string; adj: number; f: number; mcap?: number }[],
+): HistoryRow {
   return {
     schemaVersion: 1,
     date,
@@ -11,7 +14,7 @@ function row(date: string, stocks: { code: string; adj: number; f: number }[]): 
       code: s.code,
       close: s.adj,
       adjClose: s.adj,
-      mcap: 100,
+      mcap: s.mcap ?? 100,
       pe: 10,
       pb: 1,
       dy: 1,
@@ -97,5 +100,34 @@ describe('runBacktest', () => {
     })
     expect(r.dates).toHaveLength(1)
     expect(r.metrics.rebalances).toBeGreaterThanOrEqual(0)
+  })
+
+  it('poolTopN filters to the biggest stocks before ranking by factor', () => {
+    // C 動能最強但市值小；A/B 市值大。poolTopN=2 → C 不在池內，不會被選。
+    const h = Array.from({ length: 15 }, (_, i) =>
+      row(`2026-03-${String(i + 1).padStart(2, '0')}`, [
+        { code: '1111', adj: 100 * 1.005 ** i, f: 10, mcap: 900 },
+        { code: '2222', adj: 100 * 1.003 ** i, f: 5, mcap: 800 },
+        { code: '3333', adj: 100 * 1.02 ** i, f: 99, mcap: 50 },
+      ]),
+    )
+    const picked = runBacktest(h, {
+      poolTopN: 2,
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+    })
+    expect(picked.holdings.at(-1)!.codes).toEqual(['1111']) // 池內動能最強是 A，不是 C
+
+    const noPool = runBacktest(h, {
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+    })
+    expect(noPool.holdings.at(-1)!.codes).toEqual(['3333']) // 沒池限制 → 選動能最強的 C
   })
 })

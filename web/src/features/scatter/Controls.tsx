@@ -9,6 +9,9 @@ interface Props {
   status: string
   live: boolean
   onLiveChange: (v: boolean) => void
+  showN: number
+  maxN: number
+  onShowN: (n: number) => void
 }
 
 function MetricSelect({
@@ -62,9 +65,32 @@ function Check({
   )
 }
 
-export function Controls({ opts, onChange, status, live, onLiveChange }: Props) {
+const SHOW_OPTIONS = [20, 40, 60]
+
+export function Controls({
+  opts,
+  onChange,
+  status,
+  live,
+  onLiveChange,
+  showN,
+  maxN,
+  onShowN,
+}: Props) {
   return (
     <div className={styles.panel}>
+      <label className={styles.field} htmlFor="shown">
+        顯示市值前
+      </label>
+      <select id="shown" value={showN} onChange={(e) => onShowN(Number(e.target.value))}>
+        {SHOW_OPTIONS.filter((n) => n <= maxN).map((n) => (
+          <option key={n} value={n}>
+            {n} 檔
+          </option>
+        ))}
+        {maxN > 0 && !SHOW_OPTIONS.includes(maxN) && <option value={maxN}>全部 {maxN} 檔</option>}
+      </select>
+
       <MetricSelect
         id="xsel"
         label="橫軸 X"

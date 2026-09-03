@@ -8,7 +8,7 @@ from pathlib import Path
 
 import jsonschema
 
-from .config import RANKED_AT, Constituent
+from .config import DISPLAY_COUNT, RANKED_AT, Constituent
 from .factors import compute_all
 from .paths import SNAPSHOT_SCHEMA, TPE
 from .prices import PriceHistory
@@ -63,6 +63,7 @@ def build_snapshot(
         "asOf": as_of,
         "generatedAt": datetime.now(TPE).isoformat(timespec="seconds"),
         "histLen": history.max_len(),
+        "universeDisplayCount": DISPLAY_COUNT,
         "stocks": stocks,
     }
     if RANKED_AT:

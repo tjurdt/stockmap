@@ -34,6 +34,7 @@ export const snapshotSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  universeDisplayCount: z.number().int().positive().optional(),
   stocks: z.array(stockSchema).min(1),
 })
 

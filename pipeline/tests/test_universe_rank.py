@@ -1,7 +1,13 @@
-from twse_pipeline.universe_rank import names_by_code, rank, shares_by_code
+import functools
+
+from twse_pipeline.universe_rank import names_by_code, shares_by_code
+from twse_pipeline.universe_rank import rank as _rank
 
 # 30 檔假資料：代號 S00..S29，市值 = 3000 - 100*i（S00 最大）
 CODES = [f"{1000 + i}" for i in range(30)]
+
+# 這些測試用小 fixture 驗門檻邏輯，固定 top_n=20 / keep_until_rank=25
+rank = functools.partial(_rank, top_n=20, keep_until_rank=25)
 
 
 def _day(prices: dict[str, float]) -> dict[str, dict]:

@@ -4,34 +4,42 @@
   data/prices.json          — 截斷到最近 CAP 個交易日（每日管線算動能用）
   data/history/factors-*.jsonl — 完整區間（回測用）
 
-每日管線（twse_pipeline.daily）以 FinMind + TWSE 為主；本模組只在初次啟用或有新股進榜時跑。
+FinMind 免費版有小時額度；整個 universe（~60 檔 × 4 種資料）會超量。每檔抓完就寫進
+data/history/_backfill/<code>.json 當快取，碰到 402 時中斷、印訊息，重跑會從中斷處續抓。
+設 FINMIND_TOKEN（免費註冊）額度會高很多。
 
-  python -m twse_pipeline.backfill                # 整個 universe
-  python -m twse_pipeline.backfill --codes 2330,2317
+  python -m twse_pipeline.backfill                # 整個 universe（可重跑續抓）
+  python -m twse_pipeline.backfill --codes 2330   # 部分（新進榜股）
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 import time
 from datetime import date, timedelta
 
 from .config import UNIVERSE
 from .history import rebuild_from_prices
-from .paths import PRICES_JSON
+from .paths import HISTORY_DIR, PRICES_JSON
 from .prices import CAP, PriceHistory
 from .sources.finmind import (
     Dividend,
+    RateLimited,
     fetch_dividends,
     fetch_prices,
+    fetch_shares_history,
     fetch_valuation_history,
 )
 
 Valuation = dict[str, dict[str, dict[str, float | None]]]
+Shares = dict[str, dict[str, float]]
 
 LOOKBACK_DAYS = 1830  # 日曆日 ≈ 5 年（回測要夠長；前 ~1 年 mom121 會是 null）
 _THROTTLE_S = 1.5
+_CACHE_DIR = HISTORY_DIR / "_backfill"
 
 
 def build_adjusted_series(
@@ -67,55 +75,109 @@ def build_adjusted_series(
     return dates, adj, raw_close
 
 
-def backfill(
-    codes: list[str] | None, *, existing: PriceHistory | None = None, with_valuation: bool = False
-) -> tuple[PriceHistory, Valuation]:
-    hist = existing if existing is not None else PriceHistory()
-    valuation: Valuation = {}
-    end = date.today()
-    start = (end - timedelta(days=LOOKBACK_DAYS)).isoformat()
-    targets = codes or [c.code for c in UNIVERSE]
+def _fetch_one(code: str, start: str, end: str, *, deep: bool) -> dict:
+    raw = fetch_prices(code, start, end)
+    time.sleep(_THROTTLE_S)
+    if not raw:
+        return {}
+    divs = fetch_dividends(code, start, end)
+    dates, adj, raw_close = build_adjusted_series(raw, divs)
+    out: dict = {"dates": dates, "adj": adj, "raw": raw_close}
+    if deep:
+        time.sleep(_THROTTLE_S)
+        out["valuation"] = fetch_valuation_history(code, start, end)
+        # 歷史股數（TaiwanStockShareholding）：大型股變動極小，額度吃緊時可略過，
+        # rebuild 會退回用 universe 的現值算市值。設 FINMIND_TOKEN 時才抓。
+        if os.environ.get("FINMIND_TOKEN"):
+            time.sleep(_THROTTLE_S)
+            out["shares"] = fetch_shares_history(code, start, end)
+    return out
 
-    for i, code in enumerate(targets):
+
+def backfill(codes: list[str], *, deep: bool) -> tuple[dict[str, dict], bool]:
+    """抓 codes，每檔完成即寫入 _backfill 快取；回傳 ({code: payload}, complete?)。
+
+    complete=False 表示碰到 FinMind 額度上限而中斷（快取已保留，重跑可續）。
+    """
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache: dict[str, dict] = {}
+    for p in _CACHE_DIR.glob("*.json"):
+        cache[p.stem] = json.loads(p.read_text("utf-8"))
+
+    end = date.today().isoformat()
+    start = (date.today() - timedelta(days=LOOKBACK_DAYS)).isoformat()
+
+    for i, code in enumerate(codes):
+        if code in cache:
+            continue
         if i:
             time.sleep(_THROTTLE_S)
-        raw = fetch_prices(code, start, end.isoformat())
-        time.sleep(_THROTTLE_S)
-        if not raw:
+        try:
+            payload = _fetch_one(code, start, end, deep=deep)
+        except RateLimited as e:
+            print(f"  {e}\n  已抓 {len(cache)}/{len(codes)} 檔，稍後重跑此指令可續抓。")
+            return cache, False
+        if not payload:
             print(f"  {code}: FinMind 無資料，略過", file=sys.stderr)
             continue
-        divs = fetch_dividends(code, start, end.isoformat())
-        dates, adj, raw_close = build_adjusted_series(raw, divs)
-        hist.set_series(code, dates, adj, raw_close)  # 完整區間，不截斷
-        note = ""
-        if with_valuation:
-            time.sleep(_THROTTLE_S)
-            valuation[code] = fetch_valuation_history(code, start, end.isoformat())
-            note = f", 估值 {len(valuation[code])} 天"
-        print(f"  {code}: {len(dates)} 交易日, {len(divs)} 次除息{note}, adj[-1]={adj[-1]}")
-    return hist, valuation
+        cache[code] = payload
+        (_CACHE_DIR / f"{code}.json").write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")), "utf-8"
+        )
+        note = (
+            f", 估值 {len(payload['valuation'])} / 股數 {len(payload['shares'])} 天" if deep else ""
+        )
+        print(f"  {code}: {len(payload['dates'])} 交易日{note}", flush=True)
+
+    return cache, True
+
+
+def _clear_cache() -> None:
+    for p in _CACHE_DIR.glob("*.json"):
+        p.unlink()
+    if _CACHE_DIR.exists():
+        _CACHE_DIR.rmdir()
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="歷史回填")
     ap.add_argument("--codes", default="", help="逗號分隔股票代號；空 = 整個 universe")
     args = ap.parse_args(argv)
-    codes = [c.strip() for c in args.codes.split(",") if c.strip()] or None
+    only = [c.strip() for c in args.codes.split(",") if c.strip()]
+    keep = {c.code for c in UNIVERSE}
 
-    if codes:
-        # 部分回填（新進榜股）：只更新 prices.json，歷史 factor 由每日管線往後補
-        existing = PriceHistory.load(PRICES_JSON)
-        full, _ = backfill(codes, existing=existing)
-        full.prune({c.code for c in UNIVERSE})
-        full.capped(CAP).save(PRICES_JSON)
-        print(f"部分回填完成：{codes}（factor history 不重建）")
+    if only:
+        # 部分回填（新進榜股）：更新 prices.json，factor history 由每日管線往後補
+        cache, _ = backfill(only, deep=False)
+        hist = PriceHistory.load(PRICES_JSON)
+        for code in only:
+            if code in cache:
+                d = cache[code]
+                hist.set_series(code, d["dates"], d["adj"], d["raw"])
+        hist.prune(keep)
+        hist.capped(CAP).save(PRICES_JSON)
+        _clear_cache()
+        print(f"部分回填完成：{only}")
         return 0
 
-    # 整個 universe：完整區間重建 factor history（含 PE/PB/DY）+ 截斷寫 prices.json
-    full, valuation = backfill(None, with_valuation=True)
-    full.prune({c.code for c in UNIVERSE})
-    rows = rebuild_from_prices(UNIVERSE, full, valuation=valuation)
+    # 整個 universe：完整區間重建 factor history（含 PE/PB/DY + 歷史股數）
+    all_codes = [c.code for c in UNIVERSE]
+    cache, complete = backfill(all_codes, deep=True)
+    if not complete:
+        return 0  # 快取已保留，晚點重跑
+
+    full = PriceHistory()
+    valuation: Valuation = {}
+    shares: Shares = {}
+    for code, d in cache.items():
+        full.set_series(code, d["dates"], d["adj"], d["raw"])
+        valuation[code] = d.get("valuation", {})
+        shares[code] = d.get("shares", {})
+    full.prune(keep)
+
+    rows = rebuild_from_prices(UNIVERSE, full, valuation=valuation, shares=shares)
     full.capped(CAP).save(PRICES_JSON)
+    _clear_cache()
     print(f"回填完成，完整序列 {full.max_len()} 交易日，重建 factor history {rows} 列")
     return 0
 

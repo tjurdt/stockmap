@@ -24,11 +24,15 @@ def load_universe(path: Path | None = None) -> list[Constituent]:
     ]
 
 
+def _meta(path: Path | None = None) -> dict:
+    return json.loads((path or UNIVERSE_SCHEMA).read_text("utf-8"))
+
+
 def universe_ranked_at(path: Path | None = None) -> str | None:
-    raw = json.loads((path or UNIVERSE_SCHEMA).read_text("utf-8"))
-    return raw.get("rankedAt")
+    return _meta(path).get("rankedAt")
 
 
-UNIVERSE: list[Constituent] = load_universe()
+UNIVERSE: list[Constituent] = load_universe()  # 市值前 60（回測選股池）
 CODES: frozenset[str] = frozenset(c.code for c in UNIVERSE)
 RANKED_AT: str | None = universe_ranked_at()
+DISPLAY_COUNT: int = int(_meta().get("displayCount", 20))  # 前端顯示前 N 檔

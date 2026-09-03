@@ -59,24 +59,26 @@
 ## 動態名單
 
 `schema/universe.json` 由 `twse_pipeline.universe_rank` 每週一重排：抓 `STOCK_DAY_ALL`（全市場收盤）+
-`opendata/t187ap03_L`（全上市公司已發行股數）→ 算每檔市值 → 取前 20。**進出場門檻**（`KEEP_UNTIL_RANK=25`）
-讓在 20/21 名邊界擺盪的股票不會每週被換掉。名單有變時，`rank-universe` workflow 會自動對新進榜股
-跑 `backfill`。被踢出的股票，其價格序列在下次 `daily` 由 `PriceHistory.prune` 清掉。
+`opendata/t187ap03_L`（全上市公司已發行股數）→ 算每檔市值 → 取 **前 60**（`TOP_N`）。前端頁面只顯示
+前 `displayCount`（20）檔，其餘供回測的選股池。**進出場門檻**（`KEEP_UNTIL_RANK=70`）讓邊界股不會每週被換掉。
+名單有變時 `rank-universe` workflow 對新進榜股跑部分 `backfill`；被踢出的股票在下次 `daily` 由
+`PriceHistory.prune` 清掉。
 
 ## 歷史回填
 
-`twse_pipeline.backfill` 用 FinMind `TaiwanStockPrice`（原始收盤）+ `TaiwanStockDividend`（配息/除息日）
-自行計算還原因子（`build_adjusted_series`，鏡射 `adjustments.py` 的 `ref/before`），建出約 5 年的
-還原權值序列。序列最後一天無後續除息 → `adj[-1] == raw[-1]`，天然接回每日管線。寫兩份：
-`data/prices.json` 截斷到最近 400 個交易日（每日算動能用）、`data/history/factors-YYYY.jsonl` 完整區間
-（回測用，`history.rebuild_from_prices` 產生；PE/PB/DY 無歷史 → null，之後每日補上）。
+`twse_pipeline.backfill`（整個 universe，`deep=True`）每檔抓 FinMind：`TaiwanStockPrice`（原始收盤）、
+`TaiwanStockDividend`（配息/除息日）、`TaiwanStockPER`（PE/PB/DY 歷史）、`TaiwanStockShareholding`
+（歷史已發行股數）。`build_adjusted_series` 自行算還原因子（鏡射 `adjustments.py` 的 `ref/before`），
+建出約 5 年還原權值序列。`history.rebuild_from_prices` 用它 + 歷史股數（前向填補）算**逐日 point-in-time
+市值**，整檔重寫 `data/history/factors-YYYY.jsonl`（回測用）；`data/prices.json` 只留最近 400 日（每日算動能）。
 
 ## 回測
 
-`web/src/features/backtest/engine.ts` —— 純函式，橫斷面因子排名策略：每個再平衡日依所選因子
-（`METRICS[key].betterWhen` 決定方向）排名 universe，取前 N 檔等權 / 市值權重持有，隨還原價每日變動，
-下個再平衡日換股，扣交易成本。基準 = 全 universe 等權（每日再平衡）。資料源 `loadAllFactorHistory()`。
-限制：universe 是「目前」前 20，有存活者偏誤；前 ~1 年 mom121 為 null。
+`web/src/features/backtest/engine.ts` —— 純函式：每個再平衡日 (1) 依當日市值取前 `poolTopN` 大為選股池
+(2) 池內依所選因子（`METRICS[key].betterWhen` 決定方向）排名取前 `topN` 檔，等權 / 市值權重持有
+(3) 隨還原價每日變動，下個再平衡日換股，扣交易成本。基準 = 同一選股池等權（每日再平衡）。
+資料源 `loadAllFactorHistory()`（讀 `data/history/` 全部年度）。
+限制：候選 universe 是「目前」前 60，早期曾進榜但已掉出前 60 的股票不在其中；前 ~1 年 mom121 為 null。
 
 ## 盤中報價
 

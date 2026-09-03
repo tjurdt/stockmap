@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `twse_pipeline.daily` | `fetch-twse`（每交易日多次）| FinMind 收盤（TWSE STOCK_DAY_ALL 常慢一天，備援）+ TWSE BWIBBU 估值 → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` |
 | `twse_pipeline.backfill` | `backfill`（手動）| FinMind 原始價 + 配息還原 → 回填約一年 `prices.json` + 整檔重建 `data/history/` |
-| `twse_pipeline.universe_rank` | `rank-universe`（每週一）| 全市場市值 → 重排 `schema/universe.json`（含進出場門檻），新進榜股自動 backfill |
+| `twse_pipeline.universe_rank` | `rank-universe`（每週一）| 全市場市值 → 重排 `schema/universe.json`（`TOP_N`=60，前端顯示 `displayCount`=20 檔，其餘供回測選股池），新進榜股自動 backfill（需 `FINMIND_TOKEN`）|
 
 資料流：`Actions cron → pipeline 抓 TWSE OpenAPI → 寫 data/ → commit → deploy.yml build web + 併入 data/ → GitHub Pages`。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -41,7 +41,7 @@ pytest pipeline
 ruff check pipeline && ruff format --check pipeline && mypy pipeline/src
 python -m twse_pipeline.daily        # 實際抓資料並覆寫 data/（會打外部 API）
 python -m twse_pipeline.backfill     # 一次性回填約一年（FinMind，會打外部 API）
-python -m twse_pipeline.universe_rank  # 重排市值前 20 名單
+python -m twse_pipeline.universe_rank  # 重排市值前 60 名單
 python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 ```
 

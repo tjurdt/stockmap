@@ -1,6 +1,8 @@
 name: backfill
 
-# 一次性歷史回填（FinMind 原始價 + 配息自行還原）。手動觸發。
+# 一次性歷史回填（FinMind 原始價 + 配息 + PE/PB/DY + 歷史股數）。手動觸發。
+# 整個 universe（~60 檔）需要 FINMIND_TOKEN secret（免費註冊）才不會撞額度；
+# 撞到時會保留 data/history/_backfill 快取（下方 cache），重跑續抓。
 on:
   workflow_dispatch:
     inputs:
@@ -25,6 +27,12 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e pipeline
+
+      - name: Restore backfill cache
+        uses: actions/cache@v4
+        with:
+          path: data/history/_backfill
+          key: backfill-cache
 
       - name: Backfill price history + rebuild factor history
         env:

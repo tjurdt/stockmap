@@ -16,6 +16,7 @@ import { EquityChart } from './EquityChart'
 import styles from './backtest.module.css'
 
 const DEFAULT: BacktestConfig = {
+  poolTopN: 50,
   factor: 'm121',
   topN: 5,
   rebalance: 'M',
@@ -60,6 +61,7 @@ export function BacktestPage() {
 
   const history = state.status === 'ready' ? state.data : []
   const lastDate = history.at(-1)?.date
+  const universeSize = history.at(-1)?.stocks.length ?? 0
   const [period, setPeriod] = useState<'all' | '3y' | '1y'>('3y')
   const startDate = useMemo(() => {
     if (period === 'all' || !lastDate) return undefined
@@ -89,6 +91,18 @@ export function BacktestPage() {
             ]}
             onChange={setPeriod}
           />
+
+          <label className={styles.field}>選股池：市值前 {cfg.poolTopN} 大</label>
+          <div className={styles.rangeRow}>
+            <input
+              type="range"
+              min={10}
+              max={60}
+              step={5}
+              value={cfg.poolTopN}
+              onChange={(e) => patch({ poolTopN: Number(e.target.value) })}
+            />
+          </div>
 
           <label className={styles.field}>排名因子</label>
           <select
@@ -155,7 +169,7 @@ export function BacktestPage() {
                 series={[
                   { label: '策略', values: result.equity, color: 'var(--accent)' },
                   {
-                    label: '基準（全 universe 等權）',
+                    label: `基準（市值前 ${cfg.poolTopN} 等權）`,
                     values: result.benchmark,
                     color: 'var(--muted)',
                   },
@@ -200,10 +214,12 @@ export function BacktestPage() {
 
               <p className={styles.note}>
                 回測區間 {span}（約 {result.metrics.years.toFixed(1)}{' '}
-                年）。結果僅供研究，不代表未來績效。 universe 為<b>目前</b>市值前 20
-                檔，有存活者偏誤（當年市值前 20、但現在掉出的股票不在其中）。
-                報酬以還原權值計算（含配息）；PE/PB/DY 為 FinMind 歷史值。前約 1 年因序列不足，12-1
-                動能為空。
+                年）。結果僅供研究，不代表未來績效。 選股池是<b>每個再平衡日當下</b>市值前{' '}
+                {Math.min(cfg.poolTopN ?? universeSize, universeSize)}{' '}
+                大（市值用當日股數算），基準是同一池等權。候選 universe 為<b>目前</b>市值前{' '}
+                {universeSize} 檔 ——
+                早期曾進榜、但現已掉出的股票不在其中（殘存的存活者偏誤）。報酬以還原權值計算（含配息）；
+                PE/PB/DY 為 FinMind 歷史值。前約 1 年因序列不足，12-1 動能為空。
               </p>
             </>
           )}

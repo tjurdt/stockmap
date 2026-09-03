@@ -16,6 +16,8 @@ export type Weighting = 'equal' | 'mcap'
 export const BACKTEST_FACTORS: MetricKey[] = ['m20', 'm60', 'm121', 'pe', 'pb', 'dy', 'mcap']
 
 export interface BacktestConfig {
+  /** 選股池：每個再平衡日先取「當日市值前 poolTopN 大」；省略/0 = 全 universe */
+  poolTopN?: number
   factor: MetricKey
   topN: number
   rebalance: Rebalance
@@ -73,7 +75,10 @@ function rebalanceKey(iso: string, freq: Rebalance): string {
 
 function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number> {
   const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
+  const inPool = new Set(poolCodes(row, cfg.poolTopN)) // 當日市值前 poolTopN 大
+
   const ranked = row.stocks
+    .filter((s) => inPool.has(s.code))
     .map((s) => ({ code: s.code, f: histValue(s, cfg.factor), mcap: histValue(s, 'mcap') }))
     .filter((s): s is { code: string; f: number; mcap: number | null } => s.f !== null)
     .sort((a, b) => dir * (a.f - b.f))
@@ -88,6 +93,15 @@ function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number
     for (const s of ranked) w.set(s.code, 1 / ranked.length)
   }
   return w
+}
+
+/** 依市值取當日前 n 大的代號（n 省略 = 全部）。 */
+function poolCodes(row: HistoryRow, n?: number): string[] {
+  const withMcap = row.stocks
+    .map((s) => ({ code: s.code, m: histValue(s, 'mcap') }))
+    .filter((s): s is { code: string; m: number } => s.m !== null)
+    .sort((a, b) => b.m - a.m)
+  return (n && n > 0 ? withMcap.slice(0, n) : withMcap).map((s) => s.code)
 }
 
 /** code -> 當日相對前一日的還原報酬率 */
@@ -153,9 +167,13 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       eq *= 1 + r
       weights = drift(weights, rets)
       dailyEq.push(r)
-      // 基準：全 universe 等權
-      const valid = [...rets.values()]
-      if (valid.length) bench *= 1 + valid.reduce((a, b) => a + b, 0) / valid.length
+      // 基準：選股池等權（每日再平衡）
+      const poolRets = poolCodes(rows[i - 1]!, cfg.poolTopN)
+        .map((c) => rets.get(c))
+        .filter((v): v is number => v !== undefined)
+      if (poolRets.length) {
+        bench *= 1 + poolRets.reduce((a, b) => a + b, 0) / poolRets.length
+      }
     }
 
     const key = rebalanceKey(row.date, cfg.rebalance)

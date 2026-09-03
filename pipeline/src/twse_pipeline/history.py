@@ -59,25 +59,45 @@ def validate_history_row(row: dict) -> None:
     jsonschema.validate(row, schema)
 
 
+def _fill_forward(by_date: dict[str, float], all_dates: list[str]) -> dict[str, float]:
+    """把稀疏的 {date: value}（如週更股數）沿交易日往後填。"""
+    out: dict[str, float] = {}
+    keys = sorted(by_date)
+    j = 0
+    last: float | None = None
+    for d in all_dates:
+        while j < len(keys) and keys[j] <= d:
+            last = by_date[keys[j]]
+            j += 1
+        if last is not None:
+            out[d] = last
+    return out
+
+
 def rebuild_from_prices(
     universe: list[Constituent],
     history: PriceHistory,
     *,
     valuation: dict[str, dict[str, dict[str, float | None]]] | None = None,
+    shares: dict[str, dict[str, float]] | None = None,
     history_dir: Path = HISTORY_DIR,
 ) -> int:
     """用回填好的價格序列，整檔重建 data/history/factors-YYYY.jsonl。
 
     valuation：{code: {date: {"pe","pb","dy"}}}（FinMind），沒給則 PE/PB/DY 為 null。
+    shares：{code: {date: 百萬股}}（FinMind，稀疏），沒給則用 universe 的現值算市值。
     回傳寫入的總列數。
     """
     val = valuation or {}
+    sh = shares or {}
     per_code = {}
     for c in universe:
         dates, adj, raw = history.series(c.code)
         per_code[c.code] = (dates, adj, raw, {d: i for i, d in enumerate(dates)})
 
     all_dates = sorted({d for dates, *_ in per_code.values() for d in dates})
+    shares_ff = {code: _fill_forward(v, all_dates) for code, v in sh.items()}
+
     by_year: dict[str, list[str]] = {}
     for date in all_dates:
         stocks = []
@@ -88,12 +108,13 @@ def rebuild_from_prices(
                 continue
             factors = compute_all(adj[: i + 1])
             v = val.get(c.code, {}).get(date, {})
+            shares_m = shares_ff.get(c.code, {}).get(date, c.shares_m)  # 當日股數，退回現值
             stocks.append(
                 {
                     "code": c.code,
                     "close": raw[i],
                     "adjClose": adj[i],
-                    "mcap": round(raw[i] * c.shares_m / 100, 2),
+                    "mcap": round(raw[i] * shares_m / 100, 2),
                     "pe": v.get("pe"),
                     "pb": v.get("pb"),
                     "dy": v.get("dy"),

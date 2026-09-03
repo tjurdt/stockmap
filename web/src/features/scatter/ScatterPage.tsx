@@ -23,9 +23,12 @@ export function ScatterPage() {
   const state = useSnapshot()
   const [opts, setOpts] = useState<ScatterOptions>(DEFAULT_OPTS)
   const [wantLive, setWantLive] = useState(false)
+  const [showN, setShowN] = useState<number | null>(null) // null = 用 snapshot 預設
   const patch = (p: Partial<ScatterOptions>) => setOpts((o) => ({ ...o, ...p }))
 
-  const snapStocks = state.status === 'ready' ? state.data.stocks : []
+  const allStocks = state.status === 'ready' ? state.data.stocks : []
+  const limit = showN ?? (state.status === 'ready' ? (state.data.universeDisplayCount ?? 20) : 20)
+  const snapStocks = useMemo(() => allStocks.slice(0, limit), [allStocks, limit])
   const codes = useMemo(() => snapStocks.map((s) => s.code), [snapStocks])
   const { quotes, isLive } = useLiveQuotes(codes, wantLive)
   const stocks = isLive ? applyLive(snapStocks, quotes) : snapStocks
@@ -71,6 +74,9 @@ export function ScatterPage() {
             status={status}
             live={wantLive}
             onLiveChange={setWantLive}
+            showN={limit}
+            maxN={allStocks.length}
+            onShowN={setShowN}
           />
           {stocks.length > 0 && <QuotePanel stocks={stocks} live={isLive} />}
         </div>

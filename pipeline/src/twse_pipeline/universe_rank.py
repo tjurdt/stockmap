@@ -19,8 +19,10 @@ from .paths import TPE, UNIVERSE_SCHEMA
 from .sources.twse import Row, fetch_company_info, fetch_day_all
 from .util import num
 
-TOP_N = 20
-KEEP_UNTIL_RANK = 25
+# universe = 市值前 60（回測選股池的上限 + 緩衝）；前端顯示前 DISPLAY_COUNT 檔
+TOP_N = 60
+KEEP_UNTIL_RANK = 70
+DISPLAY_COUNT = 20
 _SHARES_KEY = "已發行普通股數或TDR原股發行股數"
 
 
@@ -88,10 +90,12 @@ def rank(
 def write_universe(result: RankResult, path=UNIVERSE_SCHEMA) -> None:
     payload = {
         "$comment": (
-            "台股市值前 20 大 — 由 twse_pipeline.universe_rank 每週重排，勿手改。"
+            f"台股市值前 {TOP_N} 大 — 由 twse_pipeline.universe_rank 每週重排，勿手改。"
+            f"前端顯示前 displayCount 檔；其餘供回測選股池。"
             "sharesOutstandingM = 已發行普通股數（百萬股）。"
         ),
         "rankedAt": result.ranked_at,
+        "displayCount": DISPLAY_COUNT,
         "constituents": [
             {"code": c.code, "name": c.name, "sharesOutstandingM": c.shares_m}
             for c in result.constituents
@@ -111,7 +115,7 @@ def main() -> int:
         names_by_code(company_rows),
         current=[c.code for c in UNIVERSE],
     )
-    if len(result.constituents) < TOP_N:
+    if len(result.constituents) < DISPLAY_COUNT:
         print(f"錯誤：只排出 {len(result.constituents)} 檔（資料不足），不覆寫。", file=sys.stderr)
         return 1
 
