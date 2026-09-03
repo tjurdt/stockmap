@@ -50,6 +50,49 @@
   margin-top: 14px;
 }
 
+.quotes {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin-top: 16px;
+  font-size: 12.5px;
+}
+.quotesHead {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+.quotesBody {
+  max-height: 420px;
+  overflow: auto;
+}
+.quoteRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--hair);
+  white-space: nowrap;
+}
+.quoteRow:last-child {
+  border-bottom: none;
+}
+.quoteName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quotePrice {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.quoteChg {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 52px;
+}
+
 .plotbox {
   background: var(--surface);
   border: 1px solid var(--line);

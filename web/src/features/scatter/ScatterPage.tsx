@@ -6,6 +6,7 @@ import { useSnapshot } from '../../hooks/useSnapshot'
 import { applyLive } from '../../lib/overlay'
 import { Controls } from './Controls'
 import { FactorScatter, type ScatterOptions } from './FactorScatter'
+import { QuotePanel } from './QuotePanel'
 import { StockTable } from './StockTable'
 import styles from './scatter.module.css'
 
@@ -63,13 +64,16 @@ export function ScatterPage() {
   return (
     <Layout asOf={asOf}>
       <div className={styles.layout}>
-        <Controls
-          opts={opts}
-          onChange={patch}
-          status={status}
-          live={wantLive}
-          onLiveChange={setWantLive}
-        />
+        <div>
+          <Controls
+            opts={opts}
+            onChange={patch}
+            status={status}
+            live={wantLive}
+            onLiveChange={setWantLive}
+          />
+          {stocks.length > 0 && <QuotePanel stocks={stocks} live={isLive} />}
+        </div>
         <div>
           {stocks.length > 0 ? (
             <>

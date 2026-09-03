@@ -169,6 +169,14 @@ export function FactorScatter({ stocks, opts }: { stocks: Stock[]; opts: Scatter
           <b>
             {hover.pt.d.code} {hover.pt.d.name}
           </b>
+          {hover.pt.d.close != null && (
+            <>
+              <br />
+              價：{hover.pt.d.close.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+              {hover.pt.d.chgPct != null &&
+                `　${hover.pt.d.chgPct > 0 ? '+' : ''}${hover.pt.d.chgPct.toFixed(2)}%`}
+            </>
+          )}
           <br />
           {mx.label}：{formatOrNA(metricValue(hover.pt.d, xKey), mx.fmt)}
           <br />
