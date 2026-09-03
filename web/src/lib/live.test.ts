@@ -14,8 +14,12 @@ describe('isMarketHours', () => {
     expect(isMarketHours(at('2026-09-02T00:30:00Z'))).toBe(false)
   })
 
-  it('false 在週三 14:00 TPE（收盤後）', () => {
-    expect(isMarketHours(at('2026-09-02T06:00:00Z'))).toBe(false)
+  it('false 在週三 14:30 TPE（收盤緩衝後）', () => {
+    expect(isMarketHours(at('2026-09-02T06:30:00Z'))).toBe(false)
+  })
+
+  it('true 在週三 13:50 TPE（收盤後緩衝內，Yahoo 資料落定）', () => {
+    expect(isMarketHours(at('2026-09-02T05:50:00Z'))).toBe(true)
   })
 
   it('false 在週六', () => {

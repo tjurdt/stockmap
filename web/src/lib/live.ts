@@ -1,8 +1,8 @@
 /**
- * 即時報價 —— 透過 Cloudflare Worker proxy 抓 TWSE MIS 盤中 API（見 worker/）。
+ * 盤中報價 —— 透過 Cloudflare Worker proxy 抓 Yahoo Finance（見 worker/）。
+ * 盤中約 15–20 分鐘延遲（TWSE 官方 MIS 端點會擋 Cloudflare 機房 IP，只能退而求其次）。
  *
- * VITE_QUOTE_URL 未設定時整個功能停用（前端不顯示「即時」開關）。
- * 資料是 TWSE 自己的延遲（約 20 秒），非逐筆即時。
+ * VITE_QUOTE_URL=off 時整個功能停用（前端不顯示開關）。
  */
 import { z } from 'zod'
 
@@ -29,18 +29,18 @@ export const QUOTE_URL: string = configured === 'off' ? '' : configured || DEFAU
 export const liveAvailable = QUOTE_URL !== ''
 
 export async function fetchLiveQuotes(codes: string[]): Promise<Map<string, LiveQuote>> {
-  if (!QUOTE_URL) throw new Error('即時報價未設定')
+  if (!QUOTE_URL) throw new Error('盤中報價未設定')
   const res = await fetch(`${QUOTE_URL}?codes=${codes.join(',')}`)
-  if (!res.ok) throw new Error(`即時報價 HTTP ${res.status}`)
+  if (!res.ok) throw new Error(`盤中報價 HTTP ${res.status}`)
   const { quotes } = responseSchema.parse(await res.json())
   return new Map(quotes.filter((q) => q.code).map((q) => [q.code, q]))
 }
 
-/** 台股盤中：週一~五 09:00–13:35（Asia/Taipei）。 */
+/** 台股盤中 + 收盤後 Yahoo 資料落定的緩衝：週一~五 09:00–14:00（Asia/Taipei）。 */
 export function isMarketHours(now: Date = new Date()): boolean {
   const tpe = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }))
   const day = tpe.getDay()
   if (day === 0 || day === 6) return false
   const mins = tpe.getHours() * 60 + tpe.getMinutes()
-  return mins >= 9 * 60 && mins <= 13 * 60 + 35
+  return mins >= 9 * 60 && mins <= 14 * 60
 }

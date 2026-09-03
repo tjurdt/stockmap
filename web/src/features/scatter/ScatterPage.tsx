@@ -49,15 +49,15 @@ export function ScatterPage() {
     state.status !== 'ready'
       ? '載入中…'
       : isLive
-        ? `即時（約 20 秒延遲）· 動能為 ${state.data.asOf} 收盤${ranked}`
+        ? `盤中（約 15 分鐘延遲）· 動能為 ${state.data.asOf} 收盤${ranked}`
         : `收盤 ${state.data.asOf} · 序列 ${state.data.histLen} 日${ranked}`
   const status =
     state.status !== 'ready'
       ? '載入中…'
       : isLive
-        ? `即時 ${quotes.size} 檔`
+        ? `盤中 ${quotes.size} 檔`
         : wantLive
-          ? `已載入 ${stocks.length} 檔 · 即時待盤中（09:00–13:35）`
+          ? `已載入 ${stocks.length} 檔 · 盤中報價待交易時段（09:00–14:00）`
           : `已載入 ${stocks.length} 檔`
 
   return (

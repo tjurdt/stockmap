@@ -10,9 +10,10 @@
 ## 資料流
 
 ```
-┌─ GitHub Actions: fetch-twse (每交易日 15:40 TPE) ──────────────┐
+┌─ GitHub Actions: fetch-twse (每交易日 14:00 / 18:00 TPE + 隔日補) ─┐
 │  python -m twse_pipeline.daily                                 │
-│    sources.twse   抓 STOCK_DAY_ALL / BWIBBU_ALL / TWT49U       │
+│    sources.finmind  收盤價（TWSE STOCK_DAY_ALL 常慢一天，作備援）│
+│    sources.twse     BWIBBU_ALL 估值 / TWT49U 除權息            │
 │    prices         更新 data/prices.json（還原權值序列，留 400 日）│
 │    factors        算 mom20 / mom60 / mom121                     │
 │    snapshot       寫 data/latest.json（schema 驗證後）           │
@@ -70,12 +71,13 @@
 回填後 `history.rebuild_from_prices` 用重建的序列整檔重寫 `data/history/factors-YYYY.jsonl`
 （PE/PB/DY 無歷史 → null，之後每日補上）。
 
-## 即時報價
+## 盤中報價
 
-純靜態站被 CORS 擋在 TWSE 外。`worker/`（Cloudflare Worker，選用）在邊緣代理
-`mis.twse.com.tw/stock/api/getStockInfo.jsp` 並加 CORS header。前端 `lib/live.ts` 在盤中每 20 秒輪詢，
-`lib/overlay.ts` 只把即時價疊到 `close`/`chgPct`/`mcap`，動能維持收盤值（需完整序列）。
-`VITE_QUOTE_URL` 未設定時整個功能停用。
+純靜態站被 CORS 擋在報價來源外。`worker/`（Cloudflare Worker）在邊緣代理 **Yahoo Finance v8 chart**
+（`<code>.TW`）並加 CORS header —— TWSE 官方 MIS 端點（20 秒延遲）會擋 Cloudflare 機房 IP（回 520），
+只能改用 Yahoo，盤中約 15–20 分鐘延遲。前端 `lib/live.ts` 在交易時段每 20 秒輪詢，
+`lib/overlay.ts` 只把盤中價疊到 `close`/`chgPct`/`mcap`，動能維持收盤值（需完整序列）。
+`VITE_QUOTE_URL=off` 可停用；不設則用內建的 worker 網址。
 
 ## 已知取捨
 

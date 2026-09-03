@@ -1,14 +1,15 @@
 /**
- * stockmap 即時報價 proxy —— Cloudflare Worker。
+ * stockmap 盤中報價 proxy —— Cloudflare Worker。
  *
- * 瀏覽器被 CORS 擋在 TWSE MIS 盤中 API 外；這個 worker 在邊緣代理該端點並加上 CORS header。
- * 資料仍是 TWSE 自己的延遲（約 20 秒），非逐筆。
+ * 瀏覽器被 CORS 擋在報價來源外；這個 worker 在邊緣代理並加上 CORS header。
+ * 來源：Yahoo Finance v8 chart（`<code>.TW`）。TWSE 官方 MIS 端點會擋 Cloudflare 機房 IP，
+ * 故改用 Yahoo —— 盤中約 15–20 分鐘延遲。
  *
  *   GET /quote?codes=2330,2317,2454
  *   → { quotes: [{ code, price, prevClose, time, date }], fetchedAt }
  */
 
-const MIS = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp'
+const YAHOO = 'https://query1.finance.yahoo.com/v8/finance/chart'
 
 export interface Env {
   /** 逗號分隔的允許來源。留空 = 內建清單（GitHub Pages + localhost）。設 "*" = 全開。 */
@@ -22,18 +23,53 @@ function resolveOrigin(reqOrigin: string | null, env: Env): string {
   const configured = (env.ALLOWED_ORIGIN ?? '').trim()
   if (configured === '*') return '*'
   const allow = configured ? configured.split(',').map((s) => s.trim()) : DEFAULT_ALLOWED
-  if (reqOrigin && (allow.includes(reqOrigin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(reqOrigin))) {
+  if (
+    reqOrigin &&
+    (allow.includes(reqOrigin) ||
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(reqOrigin))
+  ) {
     return reqOrigin
   }
   return allow[0] ?? '*'
 }
 
-interface MisRow {
-  c?: string // 股票代號
-  z?: string // 最近成交價（收盤後為當日收盤；無成交為 '-'）
-  y?: string // 昨收
-  t?: string // 時間 HH:MM:SS
-  d?: string // 日期 YYYYMMDD
+interface Quote {
+  code: string
+  price: number | null
+  prevClose: number | null
+  time: string | null
+  date: string | null
+}
+
+async function yahooQuote(code: string): Promise<Quote | null> {
+  try {
+    const res = await fetch(`${YAHOO}/${code}.TW?interval=1d&range=1d`, {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
+      cf: { cacheTtl: 15, cacheEverything: true },
+    })
+    if (!res.ok) return null
+    const j = (await res.json()) as {
+      chart?: { result?: Array<{ meta?: Record<string, unknown> }> }
+    }
+    const m = j.chart?.result?.[0]?.meta
+    if (!m || typeof m.regularMarketPrice !== 'number') return null
+    const prev =
+      typeof m.chartPreviousClose === 'number'
+        ? m.chartPreviousClose
+        : typeof m.previousClose === 'number'
+          ? m.previousClose
+          : null
+    const t = typeof m.regularMarketTime === 'number' ? m.regularMarketTime : null
+    return {
+      code,
+      price: m.regularMarketPrice,
+      prevClose: prev,
+      time: t ? new Date(t * 1000).toISOString() : null,
+      date: null,
+    }
+  } catch {
+    return null
+  }
 }
 
 export default {
@@ -57,44 +93,15 @@ export default {
       .slice(0, 50)
     if (codes.length === 0) return json({ error: 'codes required' }, 400, cors)
 
-    const cache = caches.default
-    const cacheKey = new Request(url.toString())
-    const cached = await cache.match(cacheKey)
-    if (cached) return withHeaders(cached, cors)
+    const quotes = (await Promise.all(codes.map(yahooQuote))).filter(
+      (q): q is Quote => q !== null,
+    )
 
-    const exCh = codes.map((c) => `tse_${c}.tw`).join('|')
-    const upstream = `${MIS}?ex_ch=${encodeURIComponent(exCh)}&json=1&delay=0&_=${Date.now()}`
-    let rows: MisRow[]
-    try {
-      const res = await fetch(upstream, {
-        headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://mis.twse.com.tw/stock/' },
-      })
-      if (!res.ok) return json({ error: `upstream ${res.status}` }, 502, cors)
-      rows = ((await res.json()) as { msgArray?: MisRow[] }).msgArray ?? []
-    } catch (e) {
-      return json({ error: `upstream ${String(e)}` }, 502, cors)
-    }
-
-    const quotes = rows.map((r) => ({
-      code: r.c ?? '',
-      price: n(r.z) ?? n(r.y),
-      prevClose: n(r.y),
-      time: r.t ?? null,
-      date: r.d ?? null,
-    }))
-
-    const out = json({ quotes, fetchedAt: new Date().toISOString() }, 200, {
+    return json({ quotes, fetchedAt: new Date().toISOString() }, 200, {
       ...cors,
       'Cache-Control': 'public, max-age=15',
     })
-    await cache.put(cacheKey, out.clone())
-    return out
   },
-}
-
-function n(s: string | undefined): number | null {
-  const v = parseFloat(s ?? '')
-  return Number.isFinite(v) ? v : null
 }
 
 function json(body: unknown, status: number, headers: Record<string, string>): Response {
@@ -102,10 +109,4 @@ function json(body: unknown, status: number, headers: Record<string, string>): R
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers },
   })
-}
-
-function withHeaders(res: Response, headers: Record<string, string>): Response {
-  const r = new Response(res.body, res)
-  for (const [k, v] of Object.entries(headers)) r.headers.set(k, v)
-  return r
 }

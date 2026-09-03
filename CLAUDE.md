@@ -17,7 +17,7 @@
 
 | 模組 | 觸發 | 做什麼 |
 | --- | --- | --- |
-| `twse_pipeline.daily` | `fetch-twse`（每交易日）| 抓 TWSE → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` |
+| `twse_pipeline.daily` | `fetch-twse`（每交易日多次）| FinMind 收盤（TWSE STOCK_DAY_ALL 常慢一天，備援）+ TWSE BWIBBU 估值 → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` |
 | `twse_pipeline.backfill` | `backfill`（手動）| FinMind 原始價 + 配息還原 → 回填約一年 `prices.json` + 整檔重建 `data/history/` |
 | `twse_pipeline.universe_rank` | `rank-universe`（每週一）| 全市場市值 → 重排 `schema/universe.json`（含進出場門檻），新進榜股自動 backfill |
 

@@ -48,10 +48,11 @@ python -m twse_pipeline.daily          # 實抓一次，覆寫 data/（會打外
 若跳過 `backfill`：首次部署時歷史序列只有 1 筆，動能欄位顯示 `—`，約 21 個交易日後 `近月動能`
 才出現、250 日後 `12-1 動能` 才完整。
 
-### 即時報價（選用）
+### 盤中報價
 
-見 [worker/README.md](worker/README.md)：部署 Cloudflare Worker、設 repo variable `VITE_QUOTE_URL`，
-前端就會出現「即時」開關（盤中顯示 TWSE 延遲約 20 秒的報價）。
+`worker/` 的 Cloudflare Worker 已部署（`stockmap-quote.tjurdt.workers.dev`），前端內建此網址，
+交易時段自動出現「盤中報價」開關。資料為 Yahoo Finance，約 15–20 分鐘延遲。
+細節與換帳號方式見 [worker/README.md](worker/README.md)。
 
 ## 需要人工維護
 

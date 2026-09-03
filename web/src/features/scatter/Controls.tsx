@@ -104,7 +104,7 @@ export function Controls({ opts, onChange, status, live, onLiveChange }: Props) 
       {liveAvailable && (
         <Check
           id="live"
-          label="即時報價（盤中，約 20 秒延遲）"
+          label="盤中報價（約 15 分鐘延遲）"
           checked={live}
           onChange={onLiveChange}
         />

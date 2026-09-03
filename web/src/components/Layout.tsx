@@ -30,10 +30,10 @@ export function Layout({ asOf, children }: { asOf?: ReactNode; children: ReactNo
       </header>
       {children}
       <footer className={styles.footer}>
-        資料來源：臺灣證券交易所 OpenAPI（<code>STOCK_DAY_ALL</code>、<code>BWIBBU_ALL</code>、
-        <code>TWT49U</code>）與 FinMind（歷史回填）。市值前 20 名單每週依全市場市值自動重排。
-        動能以還原權值收盤價計算。盤後更新；「即時」模式為 TWSE 盤中延遲報價（約 20 秒），非逐筆。
-        僅供研究，不構成投資建議。
+        資料來源：FinMind（每日收盤）、臺灣證券交易所 OpenAPI（<code>BWIBBU_ALL</code> 本益比等、
+        <code>TWT49U</code> 除權息）。市值前 20
+        名單每週依全市場市值自動重排。動能以還原權值收盤價計算。 「盤中報價」為 Yahoo Finance
+        資料，約 15–20 分鐘延遲。僅供研究，不構成投資建議。
       </footer>
     </div>
   )

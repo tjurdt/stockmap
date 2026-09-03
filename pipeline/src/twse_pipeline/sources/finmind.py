@@ -1,4 +1,4 @@
-"""FinMind 開放資料 client。只用於一次性歷史回填 —— 每日管線仍以 TWSE 為主。
+"""FinMind 開放資料 client。歷史回填 + 每日收盤（TWSE OpenAPI 的 STOCK_DAY_ALL 常慢一天）。
 
 免費版免 token（額度低，未登入約 300 req/hr）；設 FINMIND_TOKEN 環境變數可提高額度。
 """
@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 BASE = "https://api.finmindtrade.com/api/v4/data"
 _UA = "stockmap-pipeline/0.1 (+https://github.com/tjurdt/stockmap)"
@@ -60,6 +62,40 @@ def fetch_dividends(code: str, start: str, end: str) -> list[Dividend]:
             out.append(Dividend(ex, cash, stock))
     out.sort(key=lambda d: d.ex_date)
     return out
+
+
+def fetch_recent_quotes(
+    codes: list[str], *, lookback_days: int = 10, throttle_s: float = 1.0
+) -> tuple[str, dict[str, dict]]:
+    """抓每檔最近幾天的日線，取最新一個「所有股都有」的交易日。
+
+    回傳 (trading_date, {code: {ClosingPrice, Change, TradeValue}})，欄位名對齊
+    STOCK_DAY_ALL 讓 snapshot.build_stock_row 直接吃。抓不到任何資料回 ("", {})。
+    """
+    end = date.today()
+    start = (end - timedelta(days=lookback_days)).isoformat()
+    last_row: dict[str, dict] = {}
+    for i, code in enumerate(codes):
+        if i:
+            time.sleep(throttle_s)
+        rows = _get("TaiwanStockPrice", code, start, end.isoformat())
+        rows = [r for r in rows if isinstance(r.get("close"), (int, float)) and r["close"] > 0]
+        if rows:
+            last_row[code] = max(rows, key=lambda r: r["date"])
+
+    if not last_row:
+        return "", {}
+    trading_date = max(r["date"] for r in last_row.values())
+    out = {
+        code: {
+            "ClosingPrice": str(r["close"]),
+            "Change": str(r.get("spread", "")),
+            "TradeValue": str(r.get("Trading_money", "")),
+        }
+        for code, r in last_row.items()
+        if r["date"] == trading_date
+    }
+    return trading_date, out
 
 
 def _f(v: object) -> float:
