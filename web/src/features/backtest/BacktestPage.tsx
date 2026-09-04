@@ -22,6 +22,7 @@ const DEFAULT: BacktestConfig = {
   rebalance: 'M',
   weighting: 'equal',
   costBps: 30,
+  execLagDays: 1,
 }
 
 const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
@@ -143,6 +144,16 @@ export function BacktestPage() {
             onChange={(v) => patch({ rebalance: v })}
           />
 
+          <label className={styles.field}>成交時點</label>
+          <Radio<string>
+            value={String(cfg.execLagDays ?? 1)}
+            options={[
+              ['1', '隔一日'],
+              ['0', '訊號日收盤'],
+            ]}
+            onChange={(v) => patch({ execLagDays: Number(v) })}
+          />
+
           <label className={styles.field}>權重</label>
           <Radio<Weighting>
             value={cfg.weighting}
@@ -220,12 +231,17 @@ export function BacktestPage() {
 
               <p className={styles.note}>
                 回測區間 {span}（約 {result.metrics.years.toFixed(1)}{' '}
-                年）。結果僅供研究，不代表未來績效。 選股池是<b>每個再平衡日當下</b>市值前{' '}
-                {Math.min(cfg.poolTopN ?? universeSize, universeSize)}{' '}
-                大（市值用當日股數算），基準是同一池等權。候選 universe 為<b>目前</b>市值前{' '}
-                {universeSize} 檔 ——
+                年）。結果僅供研究，不代表未來績效。 排名用<b>訊號日收盤</b>資料，
+                {cfg.execLagDays === 0
+                  ? '並假設當天收盤即成交（理想，略有前視偏誤）。'
+                  : '隔一個交易日才成交（貼近實務：收盤後才知道排名）。'}
+                選股池是每個再平衡日當下市值前{' '}
+                {Math.min(cfg.poolTopN ?? universeSize, universeSize)} 大
+                （市值用當日股數算），基準是同一池等權。候選 universe 為目前市值前 {universeSize} 檔
+                ——
                 早期曾進榜、但現已掉出的股票不在其中（殘存的存活者偏誤）。報酬以還原權值計算（含配息）；
-                PE/PB/DY 為 FinMind 歷史值。前約 1 年因序列不足，12-1 動能為空。
+                PE/PB/DY 為 FinMind 歷史值。前約 1 年因序列不足，12-1 動能為空。實務還有滑價、
+                整股（1000 股）限制、成交量等未計入。
               </p>
             </>
           )}

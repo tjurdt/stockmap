@@ -24,6 +24,12 @@ export interface BacktestConfig {
   weighting: Weighting
   /** 單邊換手的交易成本（基點，1 bp = 0.01%）。台股含手續費 + 證交稅約 20–45 bp。 */
   costBps: number
+  /**
+   * 訊號日到實際成交隔幾個交易日。
+   * 0 = 用訊號日收盤價當天換（理想，有前視偏誤）。
+   * 1 = 隔一個交易日成交（預設，貼近實務：收盤後才知道排名，下一盤才進得去）。
+   */
+  execLagDays?: number
   /** 起始日 YYYY-MM-DD；省略 = 從資料最早 */
   startDate?: string
 }
@@ -158,6 +164,16 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
   let weights = new Map<string, number>()
   let lastRebalKey = ''
   const turnovers: number[] = []
+  const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
+  let pending: { target: Map<string, number>; applyAt: number } | null = null
+
+  const applyRebalance = (target: Map<string, number>, when: string) => {
+    const to = turnoverOf(weights, target)
+    turnovers.push(to)
+    eq *= 1 - (cfg.costBps / 1e4) * to * 2 // 來回
+    weights = target
+    holdings.push({ date: when, codes: [...target.keys()] })
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!
@@ -176,22 +192,31 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       }
     }
 
+    // 到了成交日 → 換股
+    if (pending && i >= pending.applyAt) {
+      if (pending.target.size > 0) applyRebalance(pending.target, row.date)
+      pending = null
+    }
+
+    // 訊號日 → 排名（用當日資料），排定 lag 個交易日後成交
     const key = rebalanceKey(row.date, cfg.rebalance)
     if (key !== lastRebalKey) {
       lastRebalKey = key
-      const target = targetWeights(row, cfg)
-      if (target.size > 0) {
-        const to = turnoverOf(weights, target)
-        turnovers.push(to)
-        eq *= 1 - (cfg.costBps / 1e4) * to * 2 // 來回
-        weights = target
-        holdings.push({ date: row.date, codes: [...target.keys()] })
+      pending = { target: targetWeights(row, cfg), applyAt: i + lag }
+      if (lag === 0 && pending.target.size > 0) {
+        applyRebalance(pending.target, row.date)
+        pending = null
       }
     }
 
     dates.push(row.date)
     equity.push(eq)
     benchmark.push(bench)
+  }
+
+  // 回測結束時還沒成交的最新排名 → 當成「下次要換成的持股」顯示
+  if (pending && pending.target.size > 0) {
+    holdings.push({ date: `${rows.at(-1)!.date}（待成交）`, codes: [...pending.target.keys()] })
   }
 
   // 指標

@@ -43,11 +43,27 @@ describe('runBacktest', () => {
       rebalance: 'M',
       weighting: 'equal',
       costBps: 0,
+      execLagDays: 0,
     })
     expect(r.dates).toHaveLength(21)
-    expect(r.equity.at(-1)!).toBeCloseTo(1.01 ** 20, 2) // 全押 A
+    expect(r.equity.at(-1)!).toBeCloseTo(1.01 ** 20, 2) // 全押 A（訊號日即成交）
     expect(r.metrics.totalReturn).toBeGreaterThan(r.metrics.benchmarkReturn)
     expect(r.metrics.maxDrawdown).toBe(0) // 只漲不跌
+  })
+
+  it('execLagDays delays the switch and costs a bit of return vs lag 0', () => {
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+    }
+    const lag0 = runBacktest(history(21), { ...base, execLagDays: 0 }).metrics.totalReturn
+    const lag1 = runBacktest(history(21), { ...base, execLagDays: 1 }).metrics.totalReturn
+    // A 每天漲 → 晚一天進場少賺一天
+    expect(lag1).toBeLessThan(lag0)
+    expect(lag1).toBeGreaterThan(0)
   })
 
   it('transaction cost drags on returns', () => {
