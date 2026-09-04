@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
-from .backfill import LOOKBACK_DAYS, build_adjusted_series
+from .backfill import KNOWN_SPLITS, LOOKBACK_DAYS, build_adjusted_series
 from .paths import DATA_DIR
 from .sources.finmind import fetch_dividends, fetch_prices, fetch_total_return_index
 
@@ -27,7 +27,7 @@ def build_rows(*, lookback_days: int = LOOKBACK_DAYS) -> list[dict]:
 
     raw = fetch_prices("0050", start, end)
     divs = fetch_dividends("0050", start, end)
-    dates, adj, _ = build_adjusted_series(raw, divs)
+    dates, adj, _ = build_adjusted_series(raw, divs, splits=KNOWN_SPLITS.get("0050", ()))
     e0050 = dict(zip(dates, adj, strict=True))
 
     all_dates = sorted(set(twii) | set(e0050))

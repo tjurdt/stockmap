@@ -38,3 +38,22 @@ def test_same_day_dividends_merge():
     divs = [Dividend("2026-01-03", 2.0, 0.0), Dividend("2026-01-03", 2.0, 0.0)]
     _, adj, _ = build_adjusted_series(raw, divs)
     assert adj[0] == pytest.approx(96.0)  # (100-4)/100 = 0.96
+
+
+def test_split_makes_series_continuous():
+    # 2026-01-03 一拆四：前一天 200、當天 ~50。分割前的 adj 應除以 4。
+    raw = _raw(200, 200, 51, 52)
+    _, adj, raw_close = build_adjusted_series(raw, [], splits=[("2026-01-03", 4.0)])
+    assert adj[:2] == [50.0, 50.0]  # 200 / 4
+    assert adj[2:] == [51, 52]
+    assert raw_close == [200, 200, 51, 52]  # raw 不動
+    assert adj[-1] == raw_close[-1]
+
+
+def test_split_and_dividend_same_day_combine():
+    # 同一天：現金股利 1（factor 0.98，以拆分前 50 元計）+ 一拆二
+    raw = _raw(50, 24)
+    _, adj, _ = build_adjusted_series(
+        raw, [Dividend("2026-01-02", cash=1.0, stock=0.0)], splits=[("2026-01-02", 2.0)]
+    )
+    assert adj[0] == pytest.approx(50 * (49 / 50) * 0.5)  # 24.5

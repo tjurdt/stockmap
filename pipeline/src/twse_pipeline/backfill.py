@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Sequence
 from datetime import date, timedelta
 
 from .config import UNIVERSE, load_backtest_universe
@@ -41,15 +42,25 @@ LOOKBACK_DAYS = 1830  # 日曆日 ≈ 5 年（回測要夠長；前 ~1 年 mom12
 _THROTTLE_S = 1.5
 _CACHE_DIR = HISTORY_DIR / "_backfill"
 
+# 已知股票分割（FinMind 的 TaiwanStockDividend 不含分割，需手動補）。
+# {code: [(生效日, 新股數/舊股數)]}，例如 0050 於 2025-06-18 一拆四。
+KNOWN_SPLITS: dict[str, list[tuple[str, float]]] = {
+    "0050": [("2025-06-18", 4.0)],
+}
+
 
 def build_adjusted_series(
-    raw: list[tuple[str, float]], dividends: list[Dividend]
+    raw: list[tuple[str, float]],
+    dividends: list[Dividend],
+    *,
+    splits: Sequence[tuple[str, float]] = (),
 ) -> tuple[list[str], list[float], list[float]]:
     """raw：由舊到新的 (date, close)。回傳 (dates, adj, raw_close)。
 
     遇到除息交易日 d：ref = (prev_close - cash) / (1 + stock/10)，factor = ref / prev_close，
     把 d 之前所有 adj 乘上 factor（鏡射 adjustments.py 的 ref/before）。
-    序列最後一天無後續除息 → adj[-1] == raw[-1]，天然接回每日管線。
+    遇到分割生效日 d（新/舊 = R）：factor 再乘 1/R，讓分割前後序列連續。
+    序列最後一天無後續事件 → adj[-1] == raw[-1]，天然接回每日管線。
     """
     div_by_date: dict[str, Dividend] = {}
     for dv in dividends:
@@ -57,16 +68,21 @@ def build_adjusted_series(
         div_by_date[dv.ex_date] = (
             Dividend(dv.ex_date, prev.cash + dv.cash, prev.stock + dv.stock) if prev else dv
         )
+    split_by_date = dict(splits)
 
     dates: list[str] = []
     adj: list[float] = []
     raw_close: list[float] = []
     prev_close: float | None = None
     for d, close in raw:
+        factor = 1.0
         div = div_by_date.get(d)
         if div and prev_close and prev_close > 0:
             ref = (prev_close - div.cash) / (1 + div.stock / 10)
-            factor = ref / prev_close
+            factor *= ref / prev_close
+        if d in split_by_date and split_by_date[d] > 0:
+            factor *= 1.0 / split_by_date[d]
+        if factor != 1.0:
             adj = [round(p * factor, 6) for p in adj]
         dates.append(d)
         adj.append(close)
@@ -81,7 +97,7 @@ def _fetch_one(code: str, start: str, end: str, *, deep: bool) -> dict:
     if not raw:
         return {}
     divs = fetch_dividends(code, start, end)
-    dates, adj, raw_close = build_adjusted_series(raw, divs)
+    dates, adj, raw_close = build_adjusted_series(raw, divs, splits=KNOWN_SPLITS.get(code, ()))
     out: dict = {"dates": dates, "adj": adj, "raw": raw_close}
     if deep:
         time.sleep(_THROTTLE_S)
