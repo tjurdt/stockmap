@@ -14,6 +14,7 @@ import {
   type StopType,
   type Weighting,
 } from './engine'
+import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { EquityChart } from './EquityChart'
 import { MethodNotes } from './MethodNotes'
 import styles from './backtest.module.css'
@@ -55,9 +56,11 @@ function Radio<T extends string>({
 
 export function BacktestPage() {
   const state = useAsync(loadAllFactorHistory, [])
+  const baselines = useAsync(loadBaselines, [])
   const snap = useSnapshot()
   const [cfg, setCfg] = useState<BacktestConfig>(DEFAULT)
   const patch = (p: Partial<BacktestConfig>) => setCfg((c) => ({ ...c, ...p }))
+  const [refs, setRefs] = useState({ twii: true, e0050: true })
 
   const names = useMemo(() => {
     const m = new Map<string, string>()
@@ -126,6 +129,25 @@ export function BacktestPage() {
 
   const poolShown = Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))
   const stopType = cfg.stopType ?? 'none'
+
+  const series = useMemo(() => {
+    type S = { label: string; values: (number | null)[]; color: string; dashed?: boolean }
+    if (!result) return [] as S[]
+    const s: S[] = [
+      { label: '策略', values: result.equity, color: 'var(--accent)' },
+      { label: `基準（前 ${poolShown} 等權）`, values: result.benchmark, color: 'var(--muted)' },
+    ]
+    const bl = baselines.status === 'ready' ? baselines.data : []
+    if (refs.twii) {
+      const v = alignNormalized(bl, result.dates, 'twiiTR')
+      if (v) s.push({ label: '大盤(報酬)', values: v, color: '#c8862b', dashed: true })
+    }
+    if (refs.e0050) {
+      const v = alignNormalized(bl, result.dates, 'e0050')
+      if (v) s.push({ label: '0050', values: v, color: '#5b8c5a', dashed: true })
+    }
+    return s
+  }, [result, baselines, refs, poolShown])
 
   return (
     <Layout asOf={span && `回測區間 ${span}`}>
@@ -268,21 +290,30 @@ export function BacktestPage() {
             <>
               <EquityChart
                 dates={result.dates}
-                series={[
-                  { label: '策略', values: result.equity, color: 'var(--accent)' },
-                  {
-                    label: `基準（市值前 ${poolShown} 等權）`,
-                    values: result.benchmark,
-                    color: 'var(--muted)',
-                  },
-                ]}
+                series={series}
                 markers={view.markers}
                 cursor={cursor}
                 onCursor={setHover}
                 onPin={(i) => setPinned((p) => (p === i ? null : i))}
               />
               <p className={styles.sub} style={{ marginTop: 4 }}>
-                圖上虛線 = 換股成交日。滑鼠移到曲線看任一天；<b>點一下鎖定</b>，
+                <label className={styles.refToggle}>
+                  <input
+                    type="checkbox"
+                    checked={refs.twii}
+                    onChange={(e) => setRefs((r) => ({ ...r, twii: e.target.checked }))}
+                  />
+                  大盤(報酬)
+                </label>
+                <label className={styles.refToggle}>
+                  <input
+                    type="checkbox"
+                    checked={refs.e0050}
+                    onChange={(e) => setRefs((r) => ({ ...r, e0050: e.target.checked }))}
+                  />
+                  0050
+                </label>
+                　圖上虛線 = 換股成交日。滑鼠移到曲線看任一天；<b>點一下鎖定</b>，
                 {pinned != null ? (
                   <button className={styles.unpin} onClick={() => setPinned(null)}>
                     📌 已鎖定 {result.dates[pinned]} ✕

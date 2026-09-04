@@ -11,8 +11,10 @@ const M = { t: 16, r: 16, b: 28, l: 52 }
 
 interface Series {
   label: string
-  values: number[]
+  values: (number | null)[]
   color: string
+  /** true = 虛線（基準用） */
+  dashed?: boolean
 }
 
 interface Props {
@@ -30,7 +32,7 @@ export function EquityChart({ dates, series, markers = [], cursor, onCursor, onP
   const svgRef = useRef<SVGSVGElement>(null)
   if (dates.length < 2) return null
 
-  const all = series.flatMap((s) => s.values)
+  const all = series.flatMap((s) => s.values).filter((v): v is number => v != null)
   const lo = Math.min(...all)
   const hi = Math.max(...all)
   const x = scaleLinear<number>({ domain: [0, dates.length - 1], range: [M.l, W - M.r] })
@@ -82,13 +84,15 @@ export function EquityChart({ dates, series, markers = [], cursor, onCursor, onP
         <line className={styles.axis} x1={M.l} y1={H - M.b} x2={W - M.r} y2={H - M.b} />
 
         {series.map((s) => (
-          <LinePath
+          <LinePath<number | null>
             key={s.label}
             data={s.values}
+            defined={(v) => v != null}
             x={(_, i) => x(i)}
-            y={(v) => y(v)}
+            y={(v) => y(v ?? lo)}
             stroke={s.color}
             strokeWidth={1.6}
+            strokeDasharray={s.dashed ? '4 3' : undefined}
             fill="none"
           />
         ))}
@@ -106,7 +110,8 @@ export function EquityChart({ dates, series, markers = [], cursor, onCursor, onP
       <div className={styles.legend}>
         {series.map((s) => (
           <span key={s.label}>
-            <i style={{ background: s.color }} /> {s.label} <b>{s.values[cur]?.toFixed(2)}</b>
+            <i style={{ background: s.color }} /> {s.label}{' '}
+            <b>{s.values[cur]?.toFixed(2) ?? '—'}</b>
           </span>
         ))}
         <span className={styles.cursorDate}>{dates[cur]}</span>

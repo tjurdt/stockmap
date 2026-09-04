@@ -70,6 +70,17 @@ def fetch_prices(code: str, start: str, end: str) -> list[tuple[str, float]]:
     return out
 
 
+def fetch_total_return_index(index_id: str, start: str, end: str) -> list[tuple[str, float]]:
+    """發行量加權股價「報酬」指數（含息）的每日點位，由舊到新的 (date, level)。"""
+    out = [
+        (r["date"], float(r["price"]))
+        for r in _get("TaiwanStockTotalReturnIndex", index_id, start, end)
+        if isinstance(r.get("price"), (int, float)) and r["price"] > 0
+    ]
+    out.sort()
+    return out
+
+
 def fetch_valuation_history(code: str, start: str, end: str) -> dict[str, dict[str, float | None]]:
     """每日本益比 / 股價淨值比 / 殖利率。回傳 {date: {"pe":..,"pb":..,"dy":..}}。"""
     out: dict[str, dict[str, float | None]] = {}

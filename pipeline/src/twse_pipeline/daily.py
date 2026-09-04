@@ -14,6 +14,7 @@ import sys
 from datetime import date, datetime, timedelta
 
 from .adjustments import fetch_adjustment_factors
+from .baselines import rebuild_baselines
 from .config import CODES, UNIVERSE
 from .history import append_history_row, build_history_row
 from .paths import LATEST_JSON, PRICES_JSON, TPE
@@ -84,6 +85,12 @@ def main() -> int:
 
     row = build_history_row(today, UNIVERSE, day_by_code, val_by_code, history)
     appended = append_history_row(row)
+
+    try:
+        n = rebuild_baselines()  # 大盤報酬指數 + 0050 還原
+        print(f"  baselines: {n} 列")
+    except Exception as e:  # noqa: BLE001 — 基準掛掉不影響主流程
+        print(f"  warn: baselines 更新失敗 ({e})", file=sys.stderr)
 
     print(
         f"{today}: 寫入 {len(snapshot['stocks'])} 檔，序列長度 {snapshot['histLen']}，"

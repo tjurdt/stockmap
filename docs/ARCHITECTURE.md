@@ -80,8 +80,10 @@
 
 `web/src/features/backtest/engine.ts` —— 純函式：每個再平衡日 (1) 依**當日** point-in-time 市值取前
 `poolTopN` 大為選股池 (2) 池內依所選因子（`METRICS[key].betterWhen` 決定方向）排名取前 `topN` 檔，
-等權 / 市值權重持有 (3) 隨還原價每日變動，下個再平衡日換股，扣交易成本。基準 = 同一選股池等權。
-資料源 `loadAllFactorHistory()`。
+等權 / 市值權重持有 (3) 隨還原價每日變動，`execLagDays` 個交易日後才成交，扣交易成本；可設固定/移動停損
+（出場後持有現金到下次再平衡）。基準 = 同一選股池等權；另可疊 `data/baselines.jsonl` 的加權報酬指數與 0050
+（`lib/baselines.ts` 正規化到起點 = 1）。資料源 `loadAllFactorHistory()`。
+`daily` / `backfill` 每次重建 `data/baselines.jsonl`（FinMind `TaiwanStockTotalReturnIndex` + 0050 還原）。
 限制：`backtest_universe` 覆蓋「過去 N 年曾進市值前 60」；再往前、或這 N 年都沒進過前 60 的股票不在其中。
 `universe_history` 之後、下次 backfill 之前的新日期，因子列只含顯示 universe(60)（下次 backfill 補回）。
 前約 1 年 mom121 為 null。

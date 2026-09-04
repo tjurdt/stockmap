@@ -92,6 +92,15 @@
   padding: 1px 8px;
   border-radius: 3px;
 }
+.refToggle {
+  margin-right: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.refToggle input {
+  margin-right: 3px;
+  vertical-align: middle;
+}
 
 .chartbox {
   background: var(--surface);

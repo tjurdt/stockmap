@@ -44,16 +44,22 @@ def main() -> int:
                 f"{latest.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})"
             )
 
-    hist_schema = _load(SCHEMA / "history.schema.json")
-    for jsonl in sorted((DATA / "history").glob("factors-*.jsonl")):
-        for i, line in enumerate(jsonl.read_text("utf-8").splitlines(), 1):
-            if not line.strip():
+    jsonl_specs = [
+        (_load(SCHEMA / "history.schema.json"), sorted((DATA / "history").glob("factors-*.jsonl"))),
+        (_load(SCHEMA / "baselines.schema.json"), [DATA / "baselines.jsonl"]),
+    ]
+    for schema, files in jsonl_specs:
+        for jsonl in files:
+            if not jsonl.exists():
                 continue
-            try:
-                jsonschema.validate(json.loads(line), hist_schema)
-            except jsonschema.ValidationError as e:
-                errors.append(f"{jsonl.relative_to(ROOT)}:{i}: {e.message}")
-        print(f"ok  {jsonl.relative_to(ROOT)}")
+            for i, line in enumerate(jsonl.read_text("utf-8").splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
+                    jsonschema.validate(json.loads(line), schema)
+                except jsonschema.ValidationError as e:
+                    errors.append(f"{jsonl.relative_to(ROOT)}:{i}: {e.message}")
+            print(f"ok  {jsonl.relative_to(ROOT)}")
 
     if errors:
         print("\nSCHEMA VALIDATION FAILED:", file=sys.stderr)
