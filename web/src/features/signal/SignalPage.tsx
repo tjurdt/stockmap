@@ -55,7 +55,16 @@ export function SignalPage() {
       }
       return mx
     }
-    return { regime, targets, isRebalDay, peakSince, lastDate: lastRow.date }
+    // 下次換股日（近似：下個月 / 下週一，遇假日順延到週一）
+    const d = new Date(`${lastRow.date}T00:00:00Z`)
+    if (p.rebalance === 'M') {
+      d.setUTCMonth(d.getUTCMonth() + 1, 1)
+    } else {
+      d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7))
+    }
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1)
+    const nextRebal = d.toISOString().slice(0, 10)
+    return { regime, targets, isRebalDay, peakSince, lastDate: lastRow.date, nextRebal }
   }, [lastRow, prevRow, rows, bl, p])
 
   const codes = useMemo(
@@ -111,12 +120,23 @@ export function SignalPage() {
       </div>
 
       <div className={model.regime === 'bear' ? styles.bearBox : styles.bullBox}>
-        大盤環境：<b>{model.regime === 'bear' ? '空頭' : '多頭'}</b>
-        {model.regime === 'bear' && ' —— 策略建議整體空手，下方目標為空。'}
-        {' · '}
-        {model.isRebalDay
-          ? `${model.lastDate} 是再平衡訊號日 → 隔一交易日照下方「明天的動作」換股`
-          : `最近一次再平衡訊號日已過；下方為「進入下一個${p.rebalance === 'M' ? '月' : '週'}時」應持有的組合`}
+        <p>
+          大盤環境：<b>{model.regime === 'bear' ? '空頭（策略建議整體空手）' : '多頭'}</b>
+        </p>
+        {model.isRebalDay ? (
+          <p>
+            <b>{model.lastDate} 是換股訊號日</b> → 下一個交易日照「明天的動作」換股。
+          </p>
+        ) : (
+          <p>
+            <b>今天不是換股日。</b>下次換股：{p.rebalance === 'M' ? '10 月' : '下週'}
+            第一個交易日（約 <b>{model.nextRebal}</b>）。在那之前：
+            <br />• 已在跑這個策略 → <b>抱著上次換股買的不動</b>，只有跌破停損才賣。
+            <br />• 還沒開始跑 → 可以現在照下方「目標持股」進場，之後每逢換股日再平衡。
+            <br />※ 下方「目標持股」是「假如今天就是換股日」的排名，到 {model.nextRebal}{' '}
+            動能會變、名單可能不同。
+          </p>
+        )}
       </div>
 
       <section>
@@ -202,12 +222,35 @@ export function SignalPage() {
         )}
       </section>
 
+      {p.stopType !== 'none' && holdings.some((h) => stopHit(h)?.hit) && (
+        <section>
+          <h3>⚠️ 現在就要處理的停損</h3>
+          <ul className={styles.actions}>
+            {holdings
+              .filter((h) => stopHit(h)?.hit)
+              .map((h) => (
+                <li key={`stop${h.code}`}>
+                  <span className={styles.sell}>停損</span> {h.code} {names.get(h.code) ?? ''}
+                  　已跌破 {p.stopPct}% → 不用等換股日，<b>今天/明天就出場</b>、持有現金至下次再平衡
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
       <section>
-        <h3>明天的動作</h3>
+        <h3>
+          {model.isRebalDay ? '明天的動作（換股日）' : `下次換股日（約 ${model.nextRebal}）要做的`}
+        </h3>
+        {!model.isRebalDay && (
+          <p className={styles.sub}>
+            預覽而已 —— 到 {model.nextRebal} 這份清單會依當時動能重算，不要現在就照這個換。
+          </p>
+        )}
         <ul className={styles.actions}>
           {toSell.map((h) => (
             <li key={h.code}>
-              <span className={styles.sell}>賣出</span> {h.code} {names.get(h.code) ?? ''}　
+              <span className={styles.sell}>賣出</span> {h.code} {names.get(h.code) ?? ''}
               {h.shares.toLocaleString()} 股 · 約 {money((px(h.code) ?? 0) * h.shares)} 元
             </li>
           ))}
@@ -222,17 +265,8 @@ export function SignalPage() {
               <span className={styles.keep}>續抱</span> {h.code} {names.get(h.code) ?? ''}
             </li>
           ))}
-          {holdings
-            .map((h) => ({ h, st: stopHit(h) }))
-            .filter((x) => x.st?.hit && targetCodes.has(x.h.code))
-            .map(({ h }) => (
-              <li key={`stop${h.code}`}>
-                <span className={styles.sell}>停損</span> {h.code} {names.get(h.code) ?? ''}
-                　已跌破 {p.stopPct}% → 出場、持有現金至下次再平衡
-              </li>
-            ))}
           {toSell.length + toBuy.length === 0 && model.targets.length > 0 && (
-            <li className={styles.sub}>組合與目標一致，無需換股（仍要看停損）。</li>
+            <li className={styles.sub}>組合與目標一致，無需換股。</li>
           )}
         </ul>
       </section>

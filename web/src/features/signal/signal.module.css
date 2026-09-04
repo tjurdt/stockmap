@@ -18,9 +18,14 @@
 .bullBox,
 .bearBox {
   margin-top: 14px;
-  padding: 10px 14px;
+  padding: 4px 14px;
   font-size: 13px;
+  line-height: 1.7;
   border: 1px solid var(--line);
+}
+.bullBox p,
+.bearBox p {
+  margin: 8px 0;
 }
 .bullBox {
   background: color-mix(in srgb, var(--up) 8%, var(--surface));
