@@ -48,12 +48,20 @@ export interface BacktestMetrics {
   years: number
 }
 
+export interface RebalanceEvent {
+  /** 排名依據的訊號日（收盤資料） */
+  signalDate: string
+  /** 實際換股成交日（= signalDate + execLagDays 個交易日）；尚未成交時為空字串 */
+  tradeDate: string
+  codes: string[]
+}
+
 export interface BacktestResult {
   dates: string[]
   equity: number[]
   benchmark: number[]
   drawdown: number[]
-  holdings: { date: string; codes: string[] }[]
+  holdings: RebalanceEvent[]
   metrics: BacktestMetrics
 }
 
@@ -101,13 +109,30 @@ function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number
   return w
 }
 
-/** 依市值取當日前 n 大的代號（n 省略 = 全部）。 */
-function poolCodes(row: HistoryRow, n?: number): string[] {
+/** 依市值取當日前 n 大 `{code, mcap}`（n 省略 = 全部），市值大→小。 */
+export function poolRanked(row: HistoryRow, n?: number): { code: string; mcap: number }[] {
   const withMcap = row.stocks
-    .map((s) => ({ code: s.code, m: histValue(s, 'mcap') }))
-    .filter((s): s is { code: string; m: number } => s.m !== null)
-    .sort((a, b) => b.m - a.m)
-  return (n && n > 0 ? withMcap.slice(0, n) : withMcap).map((s) => s.code)
+    .map((s) => ({ code: s.code, mcap: histValue(s, 'mcap') }))
+    .filter((s): s is { code: string; mcap: number } => s.mcap !== null)
+    .sort((a, b) => b.mcap - a.mcap)
+  return n && n > 0 ? withMcap.slice(0, n) : withMcap
+}
+
+function poolCodes(row: HistoryRow, n?: number): string[] {
+  return poolRanked(row, n).map((s) => s.code)
+}
+
+/** 某日期（或最近的較早交易日）的市值前 n 大。 */
+export function poolAtDate(
+  history: HistoryRow[],
+  date: string,
+  n?: number,
+): { code: string; mcap: number }[] {
+  let pick: HistoryRow | undefined
+  for (const r of history) {
+    if (r.date <= date && (!pick || r.date > pick.date)) pick = r
+  }
+  return pick ? poolRanked(pick, n) : []
 }
 
 /** code -> 當日相對前一日的還原報酬率 */
@@ -165,14 +190,14 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
   let lastRebalKey = ''
   const turnovers: number[] = []
   const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
-  let pending: { target: Map<string, number>; applyAt: number } | null = null
+  let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
 
-  const applyRebalance = (target: Map<string, number>, when: string) => {
+  const applyRebalance = (target: Map<string, number>, tradeDate: string, signalDate: string) => {
     const to = turnoverOf(weights, target)
     turnovers.push(to)
     eq *= 1 - (cfg.costBps / 1e4) * to * 2 // 來回
     weights = target
-    holdings.push({ date: when, codes: [...target.keys()] })
+    holdings.push({ signalDate, tradeDate, codes: [...target.keys()] })
   }
 
   for (let i = 0; i < rows.length; i++) {
@@ -194,7 +219,7 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
 
     // 到了成交日 → 換股
     if (pending && i >= pending.applyAt) {
-      if (pending.target.size > 0) applyRebalance(pending.target, row.date)
+      if (pending.target.size > 0) applyRebalance(pending.target, row.date, pending.signalDate)
       pending = null
     }
 
@@ -202,9 +227,9 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
     const key = rebalanceKey(row.date, cfg.rebalance)
     if (key !== lastRebalKey) {
       lastRebalKey = key
-      pending = { target: targetWeights(row, cfg), applyAt: i + lag }
+      pending = { target: targetWeights(row, cfg), applyAt: i + lag, signalDate: row.date }
       if (lag === 0 && pending.target.size > 0) {
-        applyRebalance(pending.target, row.date)
+        applyRebalance(pending.target, row.date, row.date)
         pending = null
       }
     }
@@ -216,7 +241,11 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
 
   // 回測結束時還沒成交的最新排名 → 當成「下次要換成的持股」顯示
   if (pending && pending.target.size > 0) {
-    holdings.push({ date: `${rows.at(-1)!.date}（待成交）`, codes: [...pending.target.keys()] })
+    holdings.push({
+      signalDate: pending.signalDate,
+      tradeDate: '',
+      codes: [...pending.target.keys()],
+    })
   }
 
   // 指標

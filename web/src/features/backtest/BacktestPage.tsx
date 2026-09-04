@@ -7,6 +7,7 @@ import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import {
   BACKTEST_FACTORS,
+  poolAtDate,
   runBacktest,
   type BacktestConfig,
   type Rebalance,
@@ -81,6 +82,22 @@ export function BacktestPage() {
   )
 
   const span = result?.dates.length ? `${result.dates[0]} ~ ${result.dates.at(-1)}` : ''
+
+  // ── 圖表游標：看某一天的持股 + 當時市值前 N ──────────────────
+  const [cursor, setCursor] = useState<number | null>(null)
+  const view = useMemo(() => {
+    if (!result) return null
+    const idx = Math.min(result.dates.length - 1, Math.max(0, cursor ?? result.dates.length - 1))
+    const date = result.dates[idx]!
+    const dateIdx = new Map(result.dates.map((d, i) => [d, i]))
+    const markers = result.holdings
+      .map((h) => dateIdx.get(h.tradeDate))
+      .filter((i): i is number => i !== undefined)
+    const active = [...result.holdings].reverse().find((h) => h.tradeDate && h.tradeDate <= date)
+    const held = new Set(active?.codes ?? [])
+    const pool = poolAtDate(history, date, cfg.poolTopN)
+    return { date, markers, held, active, pool }
+  }, [result, cursor, history, cfg.poolTopN])
 
   return (
     <Layout asOf={span && `回測區間 ${span}`}>
@@ -179,7 +196,7 @@ export function BacktestPage() {
           {state.status === 'error' && <p>讀不到因子歷史：{String(state.error)}</p>}
           {state.status === 'ready' && !result && <p>因子歷史資料不足，無法回測。</p>}
 
-          {result && (
+          {result && view && (
             <>
               <EquityChart
                 dates={result.dates}
@@ -191,6 +208,9 @@ export function BacktestPage() {
                     color: 'var(--muted)',
                   },
                 ]}
+                markers={view.markers}
+                cursor={cursor}
+                onCursor={setCursor}
               />
 
               <div className={styles.stats}>
@@ -216,18 +236,57 @@ export function BacktestPage() {
                 <Stat label="再平衡次數" value={String(result.metrics.rebalances)} />
               </div>
 
-              {result.holdings.at(-1) && (
-                <div className={styles.holdings}>
-                  <h3>目前持股（{result.holdings.at(-1)!.date}）</h3>
-                  <ol>
-                    {result.holdings.at(-1)!.codes.map((c) => (
-                      <li key={c}>
-                        {c} {names.get(c) ?? ''}
-                      </li>
-                    ))}
-                  </ol>
+              <div className={styles.snapshot}>
+                <div>
+                  <h3>
+                    當時持股 <span className={styles.sub}>{view.date}</span>
+                  </h3>
+                  <div className={styles.snapCol}>
+                    <ol>
+                      {(view.active?.codes ?? []).map((c) => (
+                        <li key={c}>
+                          <span>
+                            {c} {names.get(c) ?? ''}
+                          </span>
+                        </li>
+                      ))}
+                      {!view.active && <li>（尚未進場）</li>}
+                    </ol>
+                  </div>
+                  {view.active && (
+                    <p className={styles.sub} style={{ marginTop: 6 }}>
+                      訊號 {view.active.signalDate}
+                      {view.active.tradeDate && ` · 成交 ${view.active.tradeDate}`}
+                    </p>
+                  )}
                 </div>
-              )}
+                <div>
+                  <h3>
+                    當時市值前 {Math.min(cfg.poolTopN ?? 0, universeSize)}{' '}
+                    <span className={styles.sub}>持股標藍</span>
+                  </h3>
+                  <div className={styles.snapCol}>
+                    <ol>
+                      {view.pool.map((s, i) => (
+                        <li
+                          key={s.code}
+                          className={view.held.has(s.code) ? styles.held : undefined}
+                        >
+                          <span>
+                            {i + 1}. {s.code} {names.get(s.code) ?? ''}
+                          </span>
+                          <span className={styles.mc}>
+                            {Math.round(s.mcap).toLocaleString()} 億
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              </div>
+              <p className={styles.sub} style={{ marginTop: 4 }}>
+                圖上虛線 = 換股成交日；滑鼠移到曲線上可看任一天的持股與當時市值排名。
+              </p>
 
               <p className={styles.note}>
                 回測區間 {span}（約 {result.metrics.years.toFixed(1)}{' '}

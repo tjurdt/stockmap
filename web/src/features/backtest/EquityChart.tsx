@@ -1,5 +1,6 @@
 import { scaleLinear } from '@visx/scale'
 import { LinePath } from '@visx/shape'
+import { useRef } from 'react'
 
 import { niceTicks } from '../../lib/scales'
 import styles from './backtest.module.css'
@@ -14,21 +15,47 @@ interface Series {
   color: string
 }
 
-export function EquityChart({ dates, series }: { dates: string[]; series: Series[] }) {
+interface Props {
+  dates: string[]
+  series: Series[]
+  /** 換股成交日的索引，畫成虛線 */
+  markers?: number[]
+  /** 目前游標索引（null = 沒懸停，顯示最後一天） */
+  cursor: number | null
+  onCursor: (i: number | null) => void
+}
+
+export function EquityChart({ dates, series, markers = [], cursor, onCursor }: Props) {
+  const svgRef = useRef<SVGSVGElement>(null)
   if (dates.length < 2) return null
+
   const all = series.flatMap((s) => s.values)
   const lo = Math.min(...all)
   const hi = Math.max(...all)
-
   const x = scaleLinear<number>({ domain: [0, dates.length - 1], range: [M.l, W - M.r] })
   const y = scaleLinear<number>({ domain: [lo, hi], range: [H - M.b, M.t] })
 
   const yTicks = niceTicks(lo, hi, 5)
   const xTickIdx = [0, Math.floor((dates.length - 1) / 2), dates.length - 1]
 
+  const idxFromEvent = (clientX: number): number => {
+    const rect = svgRef.current!.getBoundingClientRect()
+    const px = ((clientX - rect.left) / rect.width) * W
+    return Math.min(dates.length - 1, Math.max(0, Math.round(x.invert(px))))
+  }
+
+  const cur = Math.min(dates.length - 1, Math.max(0, cursor ?? dates.length - 1))
+
   return (
     <div className={styles.chartbox}>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="回測權益曲線">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label="回測權益曲線"
+        onMouseMove={(e) => onCursor(idxFromEvent(e.clientX))}
+        onMouseLeave={() => onCursor(null)}
+      >
         {yTicks.map((t) => (
           <g key={t}>
             <line className={styles.grid} x1={M.l} y1={y(t)} x2={W - M.r} y2={y(t)} />
@@ -42,6 +69,12 @@ export function EquityChart({ dates, series }: { dates: string[]; series: Series
             {dates[i]?.slice(0, 7)}
           </text>
         ))}
+
+        {/* 換股成交日 */}
+        {markers.map((i) => (
+          <line key={`m${i}`} className={styles.marker} x1={x(i)} y1={M.t} x2={x(i)} y2={H - M.b} />
+        ))}
+
         <line className={styles.axis} x1={M.l} y1={M.t} x2={M.l} y2={H - M.b} />
         <line className={styles.axis} x1={M.l} y1={H - M.b} x2={W - M.r} y2={H - M.b} />
 
@@ -56,13 +89,24 @@ export function EquityChart({ dates, series }: { dates: string[]; series: Series
             fill="none"
           />
         ))}
+
+        {/* 游標十字 */}
+        <line className={styles.cursorLine} x1={x(cur)} y1={M.t} x2={x(cur)} y2={H - M.b} />
+        {series.map((s) => {
+          const v = s.values[cur]
+          return v == null ? null : (
+            <circle key={s.label} cx={x(cur)} cy={y(v)} r={3} fill={s.color} />
+          )
+        })}
       </svg>
+
       <div className={styles.legend}>
         {series.map((s) => (
           <span key={s.label}>
-            <i style={{ background: s.color }} /> {s.label}
+            <i style={{ background: s.color }} /> {s.label} <b>{s.values[cur]?.toFixed(2)}</b>
           </span>
         ))}
+        <span className={styles.cursorDate}>{dates[cur]}</span>
       </div>
     </div>
   )
