@@ -1,0 +1,165 @@
+.summary {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.back {
+  margin-left: 10px;
+  white-space: nowrap;
+}
+.sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.bullBox,
+.bearBox {
+  margin-top: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+}
+.bullBox {
+  background: color-mix(in srgb, var(--up) 8%, var(--surface));
+}
+.bearBox {
+  background: color-mix(in srgb, var(--down) 12%, var(--surface));
+}
+
+section {
+  margin-top: 22px;
+}
+section h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 4px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--surface);
+}
+.table th,
+.table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--hair);
+  text-align: right;
+  white-space: nowrap;
+}
+.table th:nth-child(-n + 3),
+.table td:nth-child(-n + 3) {
+  text-align: left;
+}
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.held td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.pos {
+  color: var(--up);
+}
+.neg {
+  color: var(--down);
+}
+
+.actions {
+  margin: 0;
+  padding-left: 4px;
+  list-style: none;
+  font-size: 13.5px;
+  line-height: 2;
+}
+.actions .buy,
+.actions .sell,
+.actions .keep {
+  display: inline-block;
+  width: 42px;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 12px;
+  padding: 1px 0;
+  margin-right: 8px;
+  color: #fff;
+}
+.actions .buy {
+  background: var(--up);
+}
+.actions .sell {
+  background: var(--down);
+}
+.actions .keep {
+  background: var(--flat);
+}
+
+.editor {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.editorRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.editorRow input {
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  font: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+.editorRow input[placeholder='代號'] {
+  width: 58px;
+}
+.editorRow input[type='number'] {
+  width: 84px;
+}
+.editorRow .name {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 48px;
+}
+.editorRow button {
+  padding: 5px 12px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.chip {
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+}
+.chip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.orderTips ul {
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+}

@@ -7,6 +7,7 @@ const NAV = [
   { to: '/', label: '因子散佈圖', end: true },
   { to: '/ranking', label: '排行榜', end: false },
   { to: '/backtest', label: '回測', end: false },
+  { to: '/signal', label: '操作訊號', end: false },
 ]
 
 export function Layout({ asOf, children }: { asOf?: ReactNode; children: ReactNode }) {

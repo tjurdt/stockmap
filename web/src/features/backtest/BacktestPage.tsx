@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Layout } from '../../components/Layout'
 import { useAsync } from '../../hooks/useAsync'
@@ -16,23 +17,10 @@ import {
   type Weighting,
 } from './engine'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
+import { encodeParams, decodeParams } from './strategyParams'
 import { EquityChart } from './EquityChart'
 import { MethodNotes } from './MethodNotes'
 import styles from './backtest.module.css'
-
-const DEFAULT: BacktestConfig = {
-  poolTopN: 50,
-  factor: 'm121',
-  topN: 5,
-  rebalance: 'M',
-  weighting: 'equal',
-  costBps: 30,
-  execLagDays: 1,
-  stopType: 'none',
-  stopPct: 20,
-  regime: 'off',
-  regimeDays: 200,
-}
 
 const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
 const cls = (v: number) => (v > 0 ? styles.pos : v < 0 ? styles.neg : undefined)
@@ -61,7 +49,9 @@ export function BacktestPage() {
   const state = useAsync(loadAllFactorHistory, [])
   const baselines = useAsync(loadBaselines, [])
   const snap = useSnapshot()
-  const [cfg, setCfg] = useState<BacktestConfig>(DEFAULT)
+  const navigate = useNavigate()
+  const search = useLocation().search
+  const [cfg, setCfg] = useState<BacktestConfig>(() => ({ costBps: 30, ...decodeParams(search) }))
   const patch = (p: Partial<BacktestConfig>) => setCfg((c) => ({ ...c, ...p }))
   const [refs, setRefs] = useState({ twii: true, e0050: true })
 
@@ -318,6 +308,28 @@ export function BacktestPage() {
 
           {result && view && (
             <>
+              <div className={styles.signalCta}>
+                <button
+                  onClick={() =>
+                    navigate(
+                      `/signal?${encodeParams({
+                        factor: cfg.factor,
+                        topN: cfg.topN,
+                        poolTopN: cfg.poolTopN ?? 50,
+                        rebalance: cfg.rebalance,
+                        weighting: cfg.weighting,
+                        execLagDays: cfg.execLagDays ?? 1,
+                        stopType: cfg.stopType ?? 'none',
+                        stopPct: cfg.stopPct ?? 20,
+                        regime: cfg.regime ?? 'off',
+                        regimeDays: cfg.regimeDays ?? 200,
+                      })}`,
+                    )
+                  }
+                >
+                  📋 用這個策略產生操作訊號 →
+                </button>
+              </div>
               <EquityChart
                 dates={result.dates}
                 series={series}

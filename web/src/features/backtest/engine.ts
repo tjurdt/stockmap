@@ -108,8 +108,28 @@ function isoWeekKey(iso: string): string {
   return `${year}-W${week}`
 }
 
-function rebalanceKey(iso: string, freq: Rebalance): string {
+export function rebalanceKey(iso: string, freq: Rebalance): string {
   return freq === 'M' ? iso.slice(0, 7) : isoWeekKey(iso)
+}
+
+/** 排名後的目標持股（給操作訊號頁用）。 */
+export function rankTargets(
+  row: HistoryRow,
+  cfg: BacktestConfig,
+): { code: string; weight: number; factor: number; mcap: number | null }[] {
+  const w = targetWeights(row, cfg)
+  const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
+  return [...w.keys()]
+    .map((code) => {
+      const s = row.stocks.find((x) => x.code === code)!
+      return {
+        code,
+        weight: w.get(code)!,
+        factor: histValue(s, cfg.factor)!,
+        mcap: histValue(s, 'mcap'),
+      }
+    })
+    .sort((a, b) => dir * (a.factor - b.factor))
 }
 
 function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number> {

@@ -43,7 +43,8 @@ React hook → `hooks/`。
 | Route | 檔案 | 狀態 |
 | --- | --- | --- |
 | `/`（因子散佈圖） | `features/scatter/` | 完成；含即時 overlay + 報價清單 |
-| `/backtest` | `features/backtest/` | 完成：橫斷面因子排名回測（`engine.ts`：point-in-time 市值選股池 + 因子排名 + `EquityChart`） |
+| `/backtest` | `features/backtest/` | 完成：因子排名回測（point-in-time 選股池、停損、多空過濾、成交延遲、月份區間、互動游標、大盤/0050 參照）。設定編碼在 URL query（`strategyParams.ts`） |
+| `/signal` | `features/signal/` | 完成：從回測帶策略設定過來，用最新收盤 + 即時報價算「隔天該持有什麼 / 是否停損」。使用者持股存 localStorage（`lib/portfolio.ts`） |
 | `/ranking` | `features/ranking/RankingPage.tsx` | 雛型；可加：切換排序因子、多因子綜合評分、分位數上色 |
 | `/stock/:code` | `features/stock/StockPage.tsx` | 雛型；可加：還原價走勢圖（`@visx/shape` LinePath + `loadFactorHistory`） |
 
