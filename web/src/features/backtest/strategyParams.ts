@@ -15,6 +15,7 @@ export type StrategyParams = Required<
     | 'stopPct'
     | 'regime'
     | 'regimeDays'
+    | 'regimeExit'
   >
 >
 
@@ -29,6 +30,7 @@ export const DEFAULT_PARAMS: StrategyParams = {
   stopPct: 20,
   regime: 'off',
   regimeDays: 200,
+  regimeExit: 'rebalance',
 }
 
 export function encodeParams(p: StrategyParams): string {
@@ -43,6 +45,7 @@ export function encodeParams(p: StrategyParams): string {
     stopPct: String(p.stopPct),
     regime: p.regime,
     regimeDays: String(p.regimeDays),
+    regimeExit: p.regimeExit,
   }).toString()
 }
 
@@ -69,5 +72,6 @@ export function decodeParams(qs: string): StrategyParams {
         ? (q.get('regime') as 'ma' | 'mom')
         : 'off',
     regimeDays: num('regimeDays', DEFAULT_PARAMS.regimeDays),
+    regimeExit: q.get('regimeExit') === 'immediate' ? 'immediate' : 'rebalance',
   }
 }

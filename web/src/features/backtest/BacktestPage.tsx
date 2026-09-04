@@ -266,19 +266,29 @@ export function BacktestPage() {
             onChange={(v) => patch({ regime: v })}
           />
           {cfg.regime !== 'off' && (
-            <div className={styles.rangeRow}>
-              <input
-                type="number"
-                min={20}
-                max={300}
-                step={10}
-                value={cfg.regimeDays}
-                onChange={(e) => patch({ regimeDays: Number(e.target.value) })}
+            <>
+              <div className={styles.rangeRow}>
+                <input
+                  type="number"
+                  min={20}
+                  max={300}
+                  step={10}
+                  value={cfg.regimeDays}
+                  onChange={(e) => patch({ regimeDays: Number(e.target.value) })}
+                />
+                <span className={styles.sub}>
+                  日 {cfg.regime === 'ma' ? '（指數 > 均線 = 多）' : '（指數 N 日報酬 > 0 = 多）'}
+                </span>
+              </div>
+              <Radio<'rebalance' | 'immediate'>
+                value={cfg.regimeExit ?? 'rebalance'}
+                options={[
+                  ['rebalance', '換股日才空手'],
+                  ['immediate', '轉空立刻清空'],
+                ]}
+                onChange={(v) => patch({ regimeExit: v })}
               />
-              <span className={styles.sub}>
-                日 {cfg.regime === 'ma' ? '（指數 > 均線 = 多）' : '（指數 N 日報酬 > 0 = 多）'}
-              </span>
-            </div>
+            </>
           )}
 
           <label className={styles.field}>權重</label>
@@ -323,6 +333,7 @@ export function BacktestPage() {
                         stopPct: cfg.stopPct ?? 20,
                         regime: cfg.regime ?? 'off',
                         regimeDays: cfg.regimeDays ?? 200,
+                        regimeExit: cfg.regimeExit ?? 'rebalance',
                       })}`,
                     )
                   }

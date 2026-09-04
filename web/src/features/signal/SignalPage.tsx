@@ -113,7 +113,9 @@ export function SignalPage() {
         {p.stopType !== 'none' &&
           ` · ${p.stopType === 'trailing' ? '移動' : '固定'}停損 ${p.stopPct}%`}
         {p.regime !== 'off' &&
-          ` · 多空過濾（${p.regime === 'ma' ? '均線' : '動能'} ${p.regimeDays} 日）`}
+          ` · 多空過濾（${p.regime === 'ma' ? '均線' : '動能'} ${p.regimeDays} 日，${
+            p.regimeExit === 'immediate' ? '轉空立刻清空' : '換股日才空手'
+          }）`}
         <Link to={`/backtest${search}`} className={styles.back}>
           ← 回回測調整
         </Link>
@@ -121,9 +123,19 @@ export function SignalPage() {
 
       <div className={model.regime === 'bear' ? styles.bearBox : styles.bullBox}>
         <p>
-          大盤環境：<b>{model.regime === 'bear' ? '空頭（策略建議整體空手）' : '多頭'}</b>
+          大盤環境：<b>{model.regime === 'bear' ? '空頭' : '多頭'}</b>
+          {model.regime === 'bear' &&
+            (p.regimeExit === 'immediate'
+              ? holdings.length > 0
+                ? ' —— 依策略「轉空立刻清空」，現在就把持股全部賣掉、抱現金，直到換股日轉多才進場。'
+                : ' —— 空手中，等換股日轉多才進場。'
+              : ' —— 策略建議這輪空手（抱著現有持股到換股日再依規則處理）。')}
         </p>
-        {model.isRebalDay ? (
+        {model.regime === 'bear' && p.regimeExit === 'immediate' ? (
+          <p>
+            {/* 已在上面講清楚 */}下次進場：換股日（約 {model.nextRebal}）且大盤轉多。
+          </p>
+        ) : model.isRebalDay ? (
           <p>
             <b>{model.lastDate} 是換股訊號日</b> → 下一個交易日照「明天的動作」換股。
           </p>

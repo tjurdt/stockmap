@@ -195,6 +195,35 @@ describe('runBacktest', () => {
     expect(on.regime.filter((r) => r === 'bear').length).toBeGreaterThan(10)
   })
 
+  it('regimeExit immediate：轉空當天清空，rebalance 模式撐到換股日', () => {
+    // 25 天，A 每天漲 2%。指數前 3 天多頭、之後一路空頭。每週再平衡。
+    const days = 25
+    const h = Array.from({ length: days }, (_, i) =>
+      row(`2026-02-${String(i + 1).padStart(2, '0')}`, [
+        { code: '1111', adj: 100 * 1.02 ** i, f: 9 },
+      ]),
+    )
+    const bl: BaselineRow[] = Array.from({ length: days }, (_, i) => ({
+      date: `2026-02-${String(i + 1).padStart(2, '0')}`,
+      twiiTR: i < 4 ? 100 : 100 - i * 3, // 第 4 天起跌破 3 日均線
+    }))
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'W' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+      regime: 'ma' as const,
+      regimeDays: 3,
+    }
+    const immediate = runBacktest(h, { ...base, regimeExit: 'immediate' }, bl)
+    const onRebal = runBacktest(h, { ...base, regimeExit: 'rebalance' }, bl)
+    // immediate 在 A 還在漲的時候就出場 → 賺得比「撐到週末換股日」少
+    expect(immediate.metrics.totalReturn).toBeLessThan(onRebal.metrics.totalReturn)
+    expect(immediate.metrics.totalReturn).toBeGreaterThanOrEqual(0)
+  })
+
   it('returns empty-ish result when history too short', () => {
     const r = runBacktest(history(1), {
       factor: 'm20',

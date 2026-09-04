@@ -15,6 +15,7 @@ describe('strategyParams', () => {
       stopPct: 15,
       regime: 'ma' as const,
       regimeDays: 120,
+      regimeExit: 'immediate' as const,
     }
     expect(decodeParams(encodeParams(p))).toEqual(p)
   })

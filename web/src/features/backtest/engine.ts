@@ -44,10 +44,15 @@ export interface BacktestConfig {
    * 多空環境過濾（用加權報酬指數判斷）。off = 關（預設）。
    * ma：指數在自身 regimeDays 日均線之上 = 多頭，之下 = 空頭。
    * mom：指數 regimeDays 日報酬率 > 0 = 多頭。
-   * 空頭的再平衡日改持有現金，直到轉多。
    */
   regime?: RegimeIndicator
   regimeDays?: number
+  /**
+   * 空頭時怎麼反應。
+   * rebalance（預設）：只在再平衡日檢查，空頭則不進場 / 抱現金；期間內轉空不動作。
+   * immediate：一轉空頭當天就清空全部持股、抱現金，直到再平衡日且轉多才重新進場。
+   */
+  regimeExit?: 'rebalance' | 'immediate'
   /** 起始 / 結束日 YYYY-MM-DD；省略 = 資料全範圍 */
   startDate?: string
   endDate?: string
@@ -302,6 +307,7 @@ export function runBacktest(
   const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
   const stopType = cfg.stopType ?? 'none'
   const stopFrac = (cfg.stopPct ?? 0) / 100
+  const immediateExit = (cfg.regime ?? 'off') !== 'off' && cfg.regimeExit === 'immediate'
   let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
   // 每檔進場後的參考 adjClose（買進日）與波段高點
   const entry = new Map<string, { in: number; peak: number }>()
@@ -360,6 +366,18 @@ export function runBacktest(
             entry.delete(c)
             stops++
           }
+        }
+      }
+
+      // immediate：一轉空頭當天清空全部持股
+      if (immediateExit && regimeMap.get(row.date) === 'bear' && weights.size > 0) {
+        let held = 0
+        for (const w of weights.values()) held += w
+        if (held > 0) {
+          eq *= 1 - cost1 * held
+          weights = new Map()
+          entry.clear()
+          if (pending && pending.target.size > 0) pending = null // 取消尚未成交的進場
         }
       }
     }
