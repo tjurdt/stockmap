@@ -20,12 +20,13 @@ interface Props {
   series: Series[]
   /** 換股成交日的索引，畫成虛線 */
   markers?: number[]
-  /** 目前游標索引（null = 沒懸停，顯示最後一天） */
+  /** 目前游標索引（null = 沒懸停 / 未鎖定，顯示最後一天） */
   cursor: number | null
   onCursor: (i: number | null) => void
+  onPin?: (i: number) => void
 }
 
-export function EquityChart({ dates, series, markers = [], cursor, onCursor }: Props) {
+export function EquityChart({ dates, series, markers = [], cursor, onCursor, onPin }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   if (dates.length < 2) return null
 
@@ -53,8 +54,10 @@ export function EquityChart({ dates, series, markers = [], cursor, onCursor }: P
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label="回測權益曲線"
+        style={{ cursor: onPin ? 'crosshair' : undefined }}
         onMouseMove={(e) => onCursor(idxFromEvent(e.clientX))}
         onMouseLeave={() => onCursor(null)}
+        onClick={(e) => onPin?.(idxFromEvent(e.clientX))}
       >
         {yTicks.map((t) => (
           <g key={t}>

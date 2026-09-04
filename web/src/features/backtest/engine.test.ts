@@ -106,6 +106,57 @@ describe('runBacktest', () => {
     expect(r.metrics.totalReturn).toBeLessThan(r.metrics.benchmarkReturn)
   })
 
+  it('fixed stop-loss exits a crashing position and caps the loss', () => {
+    // 只有一檔 A：前 5 天持平，第 6 天 -12%，之後續跌。stop 10% → 第 6 天出場後不再受傷。
+    const days = 20
+    const h = Array.from({ length: days }, (_, i) => {
+      const adj = i < 5 ? 100 : i === 5 ? 88 : 88 - (i - 5) * 5
+      return row(`2026-04-${String(i + 1).padStart(2, '0')}`, [{ code: '1111', adj, f: 1 }])
+    })
+    const noStop = runBacktest(h, {
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+      execLagDays: 0,
+    })
+    const withStop = runBacktest(h, {
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+      execLagDays: 0,
+      stopType: 'fixed',
+      stopPct: 10,
+    })
+    expect(withStop.metrics.stops).toBe(1)
+    expect(withStop.metrics.totalReturn).toBeGreaterThan(noStop.metrics.totalReturn)
+    expect(withStop.metrics.totalReturn).toBeCloseTo(-0.12, 2) // 停在 -12%，之後持有現金
+  })
+
+  it('trailing stop-loss triggers on drawdown from peak', () => {
+    // A 漲到 120 再回落到 105（自高點 -12.5%）。trailing 10% → 出場。
+    const seq = [100, 105, 110, 115, 120, 118, 112, 105, 100, 95]
+    const h = seq.map((adj, i) =>
+      row(`2026-05-${String(i + 1).padStart(2, '0')}`, [{ code: '1111', adj, f: 1 }]),
+    )
+    const r = runBacktest(h, {
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+      execLagDays: 0,
+      stopType: 'trailing',
+      stopPct: 10,
+    })
+    expect(r.metrics.stops).toBe(1)
+    // 120 * 0.9 = 108 → 第一個 <= 108 是 105（index 7）→ 停在 105/100 - 1 = +5%
+    expect(r.metrics.totalReturn).toBeCloseTo(0.05, 2)
+  })
+
   it('returns empty-ish result when history too short', () => {
     const r = runBacktest(history(1), {
       factor: 'm20',

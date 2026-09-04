@@ -11,6 +11,7 @@ import { METRICS, type MetricKey } from '../../lib/metrics'
 
 export type Rebalance = 'W' | 'M'
 export type Weighting = 'equal' | 'mcap'
+export type StopType = 'none' | 'fixed' | 'trailing'
 
 /** 可當排名因子的欄位（history jsonl 有、且排名有意義的）。 */
 export const BACKTEST_FACTORS: MetricKey[] = ['m20', 'm60', 'm121', 'pe', 'pb', 'dy', 'mcap']
@@ -30,8 +31,16 @@ export interface BacktestConfig {
    * 1 = 隔一個交易日成交（預設，貼近實務：收盤後才知道排名，下一盤才進得去）。
    */
   execLagDays?: number
-  /** 起始日 YYYY-MM-DD；省略 = 從資料最早 */
+  /**
+   * 停損。none = 關（預設）。
+   * fixed：個股自買進日跌超過 stopPct% 就當日出場、持有現金到下次再平衡。
+   * trailing：從買進後的最高點回落超過 stopPct% 就出場。
+   */
+  stopType?: StopType
+  stopPct?: number
+  /** 起始 / 結束日 YYYY-MM-DD；省略 = 資料全範圍 */
   startDate?: string
+  endDate?: string
 }
 
 export interface BacktestMetrics {
@@ -44,6 +53,8 @@ export interface BacktestMetrics {
   /** 每次再平衡的平均單邊換手率 */
   turnover: number
   rebalances: number
+  /** 停損出場次數 */
+  stops: number
   tradingDays: number
   years: number
 }
@@ -148,16 +159,24 @@ function dailyReturns(prev: HistoryRow, cur: HistoryRow): Map<string, number> {
   return out
 }
 
-function drift(weights: Map<string, number>, rets: Map<string, number>): Map<string, number> {
+/** 依當日報酬更新權重（佔「新的總權益」的比例）。r = 當日組合報酬。 */
+function drift(
+  weights: Map<string, number>,
+  rets: Map<string, number>,
+  r: number,
+): Map<string, number> {
   const grown = new Map<string, number>()
-  let total = 0
   for (const [code, w] of weights) {
-    const g = w * (1 + (rets.get(code) ?? 0))
-    grown.set(code, g)
-    total += g
+    grown.set(code, (w * (1 + (rets.get(code) ?? 0))) / (1 + r))
   }
-  if (total > 0) for (const [code, g] of grown) grown.set(code, g / total)
-  return grown
+  return grown // 未加總到 1 的部分 = 現金
+}
+
+/** row → {code: adjClose} */
+function adjMap(row: HistoryRow): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const s of row.stocks) if (s.adjClose != null && s.adjClose > 0) m.set(s.code, s.adjClose)
+  return m
 }
 
 function portfolioReturn(weights: Map<string, number>, rets: Map<string, number>): number {
@@ -175,7 +194,9 @@ function turnoverOf(from: Map<string, number>, to: Map<string, number>): number 
 
 export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): BacktestResult {
   const rows = history
-    .filter((r) => !cfg.startDate || r.date >= cfg.startDate)
+    .filter(
+      (r) => (!cfg.startDate || r.date >= cfg.startDate) && (!cfg.endDate || r.date <= cfg.endDate),
+    )
     .sort((a, b) => a.date.localeCompare(b.date))
 
   const dates: string[] = []
@@ -189,24 +210,44 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
   let weights = new Map<string, number>()
   let lastRebalKey = ''
   const turnovers: number[] = []
+  let stops = 0
   const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
+  const stopType = cfg.stopType ?? 'none'
+  const stopFrac = (cfg.stopPct ?? 0) / 100
   let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
+  // 每檔進場後的參考 adjClose（買進日）與波段高點
+  const entry = new Map<string, { in: number; peak: number }>()
+  const cost1 = cfg.costBps / 1e4
 
-  const applyRebalance = (target: Map<string, number>, tradeDate: string, signalDate: string) => {
+  const applyRebalance = (
+    target: Map<string, number>,
+    tradeDate: string,
+    signalDate: string,
+    adj: Map<string, number>,
+  ) => {
     const to = turnoverOf(weights, target)
     turnovers.push(to)
-    eq *= 1 - (cfg.costBps / 1e4) * to * 2 // 來回
+    eq *= 1 - cost1 * to * 2 // 來回
     weights = target
+    for (const c of target.keys()) {
+      if (!entry.has(c)) {
+        const p = adj.get(c) ?? 0
+        entry.set(c, { in: p, peak: p })
+      }
+    }
+    for (const c of entry.keys()) if (!target.has(c)) entry.delete(c)
     holdings.push({ signalDate, tradeDate, codes: [...target.keys()] })
   }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!
+    const adj = adjMap(row)
+
     if (i > 0) {
       const rets = dailyReturns(rows[i - 1]!, row)
       const r = portfolioReturn(weights, rets)
       eq *= 1 + r
-      weights = drift(weights, rets)
+      weights = drift(weights, rets, r)
       dailyEq.push(r)
       // 基準：選股池等權（每日再平衡）
       const poolRets = poolCodes(rows[i - 1]!, cfg.poolTopN)
@@ -215,11 +256,29 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       if (poolRets.length) {
         bench *= 1 + poolRets.reduce((a, b) => a + b, 0) / poolRets.length
       }
+
+      // 停損檢查（用當日 adjClose）
+      if (stopType !== 'none' && stopFrac > 0) {
+        for (const [c, w] of weights) {
+          if (w <= 0) continue
+          const e = entry.get(c)
+          const px = adj.get(c)
+          if (!e || px == null) continue
+          e.peak = Math.max(e.peak, px)
+          const ref = stopType === 'trailing' ? e.peak : e.in
+          if (ref > 0 && px / ref - 1 <= -stopFrac) {
+            eq *= 1 - cost1 * w // 賣出成本
+            weights.set(c, 0)
+            entry.delete(c)
+            stops++
+          }
+        }
+      }
     }
 
     // 到了成交日 → 換股
     if (pending && i >= pending.applyAt) {
-      if (pending.target.size > 0) applyRebalance(pending.target, row.date, pending.signalDate)
+      if (pending.target.size > 0) applyRebalance(pending.target, row.date, pending.signalDate, adj)
       pending = null
     }
 
@@ -229,7 +288,7 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       lastRebalKey = key
       pending = { target: targetWeights(row, cfg), applyAt: i + lag, signalDate: row.date }
       if (lag === 0 && pending.target.size > 0) {
-        applyRebalance(pending.target, row.date, row.date)
+        applyRebalance(pending.target, row.date, row.date, adj)
         pending = null
       }
     }
@@ -276,6 +335,7 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       volatility: sd * Math.sqrt(252),
       turnover: turnovers.length ? turnovers.reduce((a, b) => a + b, 0) / turnovers.length : 0,
       rebalances: turnovers.length,
+      stops,
       tradingDays: dates.length,
       years,
     },

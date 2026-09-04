@@ -63,6 +63,35 @@
 .rangeRow input[type='range'] {
   flex: 1;
 }
+.rangeRow input[type='number'] {
+  width: 64px;
+}
+.monthRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.monthRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+.unpin {
+  border: 1px solid var(--accent);
+  background: #eef3f8;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 3px;
+}
 
 .chartbox {
   background: var(--surface);
@@ -216,4 +245,46 @@
   background: #fff6e5;
   border: 1px solid #e0c888;
   padding: 12px;
+}
+
+.method {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.method summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+.method[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+.method > :not(summary) {
+  margin: 10px 16px;
+}
+.method h4 {
+  margin: 16px 16px 4px;
+  font-size: 13.5px;
+}
+.method ol,
+.method ul {
+  padding-left: 22px;
+}
+.methodTable {
+  border-collapse: collapse;
+  width: calc(100% - 32px);
+}
+.methodTable td {
+  border-top: 1px solid var(--hair);
+  padding: 5px 8px;
+  vertical-align: top;
+}
+.methodTable td:first-child {
+  white-space: nowrap;
+  color: var(--muted);
+  width: 1%;
 }

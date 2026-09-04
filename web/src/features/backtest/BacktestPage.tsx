@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Layout } from '../../components/Layout'
 import { useAsync } from '../../hooks/useAsync'
@@ -11,9 +11,11 @@ import {
   runBacktest,
   type BacktestConfig,
   type Rebalance,
+  type StopType,
   type Weighting,
 } from './engine'
 import { EquityChart } from './EquityChart'
+import { MethodNotes } from './MethodNotes'
 import styles from './backtest.module.css'
 
 const DEFAULT: BacktestConfig = {
@@ -24,6 +26,8 @@ const DEFAULT: BacktestConfig = {
   weighting: 'equal',
   costBps: 30,
   execLagDays: 1,
+  stopType: 'none',
+  stopPct: 20,
 }
 
 const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
@@ -62,29 +66,50 @@ export function BacktestPage() {
   }, [snap])
 
   const history = state.status === 'ready' ? state.data : []
-  const lastDate = history.at(-1)?.date
-  // 每日新增的列只含顯示 universe（~60）；歷史列含完整回測 universe（~120）→ 取最大
   const universeSize = useMemo(
     () => history.reduce((m, r) => Math.max(m, r.stocks.length), 0),
     [history],
   )
-  const [period, setPeriod] = useState<'all' | '3y' | '1y'>('3y')
-  const startDate = useMemo(() => {
-    if (period === 'all' || !lastDate) return undefined
-    const d = new Date(`${lastDate}T00:00:00Z`)
-    d.setUTCFullYear(d.getUTCFullYear() - (period === '3y' ? 3 : 1))
-    return d.toISOString().slice(0, 10)
-  }, [period, lastDate])
+  const months = useMemo(
+    () => [...new Set(history.map((r) => r.date.slice(0, 7)))].sort(),
+    [history],
+  )
+
+  // 時間區間（以月為單位）
+  const [startMonth, setStartMonth] = useState('')
+  const [endMonth, setEndMonth] = useState('')
+  useEffect(() => {
+    if (months.length && !startMonth) {
+      setStartMonth(months[Math.max(0, months.length - 37)]!) // 預設近 3 年
+      setEndMonth(months.at(-1)!)
+    }
+  }, [months, startMonth])
+  const quickRange = (yrs: number | 'all') => {
+    if (!months.length) return
+    setEndMonth(months.at(-1)!)
+    setStartMonth(yrs === 'all' ? months[0]! : months[Math.max(0, months.length - yrs * 12 - 1)]!)
+  }
+
+  const range = useMemo(
+    () => ({
+      startDate: startMonth ? `${startMonth}-01` : undefined,
+      endDate: endMonth ? `${endMonth}-31` : undefined,
+    }),
+    [startMonth, endMonth],
+  )
 
   const result = useMemo(
-    () => (history.length > 1 ? runBacktest(history, { ...cfg, startDate }) : null),
-    [history, cfg, startDate],
+    () => (history.length > 1 ? runBacktest(history, { ...cfg, ...range }) : null),
+    [history, cfg, range],
   )
 
   const span = result?.dates.length ? `${result.dates[0]} ~ ${result.dates.at(-1)}` : ''
 
-  // ── 圖表游標：看某一天的持股 + 當時市值前 N ──────────────────
-  const [cursor, setCursor] = useState<number | null>(null)
+  // ── 圖表游標：hover 追隨、click 鎖定 ─────────────────────────
+  const [hover, setHover] = useState<number | null>(null)
+  const [pinned, setPinned] = useState<number | null>(null)
+  const cursor = pinned ?? hover
+
   const view = useMemo(() => {
     if (!result) return null
     const idx = Math.min(result.dates.length - 1, Math.max(0, cursor ?? result.dates.length - 1))
@@ -99,24 +124,42 @@ export function BacktestPage() {
     return { date, markers, held, active, pool }
   }, [result, cursor, history, cfg.poolTopN])
 
+  const poolShown = Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))
+  const stopType = cfg.stopType ?? 'none'
+
   return (
     <Layout asOf={span && `回測區間 ${span}`}>
       <div className={styles.layout}>
         <div className={styles.panel}>
           <label className={styles.field}>回測區間</label>
-          <Radio<'all' | '3y' | '1y'>
-            value={period}
+          <Radio<string>
+            value=""
             options={[
-              ['1y', '近 1 年'],
-              ['3y', '近 3 年'],
+              ['1', '近 1 年'],
+              ['3', '近 3 年'],
               ['all', '全部'],
             ]}
-            onChange={setPeriod}
+            onChange={(v) => quickRange(v === 'all' ? 'all' : Number(v))}
           />
+          <div className={styles.monthRow}>
+            <input
+              type="month"
+              value={startMonth}
+              min={months[0]}
+              max={endMonth || months.at(-1)}
+              onChange={(e) => setStartMonth(e.target.value)}
+            />
+            <span>~</span>
+            <input
+              type="month"
+              value={endMonth}
+              min={startMonth || months[0]}
+              max={months.at(-1)}
+              onChange={(e) => setEndMonth(e.target.value)}
+            />
+          </div>
 
-          <label className={styles.field}>
-            選股池：市值前 {Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))} 大
-          </label>
+          <label className={styles.field}>選股池：市值前 {poolShown} 大</label>
           <div className={styles.rangeRow}>
             <input
               type="range"
@@ -171,6 +214,31 @@ export function BacktestPage() {
             onChange={(v) => patch({ execLagDays: Number(v) })}
           />
 
+          <label className={styles.field}>停損</label>
+          <Radio<StopType>
+            value={stopType}
+            options={[
+              ['none', '關'],
+              ['fixed', '固定'],
+              ['trailing', '移動'],
+            ]}
+            onChange={(v) => patch({ stopType: v })}
+          />
+          {stopType !== 'none' && (
+            <div className={styles.rangeRow}>
+              <input
+                type="number"
+                min={2}
+                max={50}
+                value={cfg.stopPct}
+                onChange={(e) => patch({ stopPct: Number(e.target.value) })}
+              />
+              <span className={styles.sub}>
+                % {stopType === 'trailing' ? '（自高點）' : '（自買進）'}
+              </span>
+            </div>
+          )}
+
           <label className={styles.field}>權重</label>
           <Radio<Weighting>
             value={cfg.weighting}
@@ -203,15 +271,26 @@ export function BacktestPage() {
                 series={[
                   { label: '策略', values: result.equity, color: 'var(--accent)' },
                   {
-                    label: `基準（市值前 ${cfg.poolTopN} 等權）`,
+                    label: `基準（市值前 ${poolShown} 等權）`,
                     values: result.benchmark,
                     color: 'var(--muted)',
                   },
                 ]}
                 markers={view.markers}
                 cursor={cursor}
-                onCursor={setCursor}
+                onCursor={setHover}
+                onPin={(i) => setPinned((p) => (p === i ? null : i))}
               />
+              <p className={styles.sub} style={{ marginTop: 4 }}>
+                圖上虛線 = 換股成交日。滑鼠移到曲線看任一天；<b>點一下鎖定</b>，
+                {pinned != null ? (
+                  <button className={styles.unpin} onClick={() => setPinned(null)}>
+                    📌 已鎖定 {result.dates[pinned]} ✕
+                  </button>
+                ) : (
+                  ' 再點一下解開。'
+                )}
+              </p>
 
               <div className={styles.stats}>
                 <Stat
@@ -225,6 +304,11 @@ export function BacktestPage() {
                   klass={cls(result.metrics.benchmarkReturn)}
                 />
                 <Stat
+                  label="相對基準"
+                  value={pct(result.metrics.totalReturn - result.metrics.benchmarkReturn)}
+                  klass={cls(result.metrics.totalReturn - result.metrics.benchmarkReturn)}
+                />
+                <Stat
                   label="年化報酬"
                   value={pct(result.metrics.cagr)}
                   klass={cls(result.metrics.cagr)}
@@ -233,7 +317,10 @@ export function BacktestPage() {
                 <Stat label="夏普值" value={result.metrics.sharpe.toFixed(2)} />
                 <Stat label="年化波動" value={pct(result.metrics.volatility)} />
                 <Stat label="平均換手率" value={`${(result.metrics.turnover * 100).toFixed(0)}%`} />
-                <Stat label="再平衡次數" value={String(result.metrics.rebalances)} />
+                <Stat
+                  label="再平衡 / 停損"
+                  value={`${result.metrics.rebalances} / ${result.metrics.stops}`}
+                />
               </div>
 
               <div className={styles.snapshot}>
@@ -256,14 +343,13 @@ export function BacktestPage() {
                   {view.active && (
                     <p className={styles.sub} style={{ marginTop: 6 }}>
                       訊號 {view.active.signalDate}
-                      {view.active.tradeDate && ` · 成交 ${view.active.tradeDate}`}
+                      {view.active.tradeDate ? ` · 成交 ${view.active.tradeDate}` : ' · 尚未成交'}
                     </p>
                   )}
                 </div>
                 <div>
                   <h3>
-                    當時市值前 {Math.min(cfg.poolTopN ?? 0, universeSize)}{' '}
-                    <span className={styles.sub}>持股標藍</span>
+                    當時市值前 {poolShown} <span className={styles.sub}>持股標藍</span>
                   </h3>
                   <div className={styles.snapCol}>
                     <ol>
@@ -284,24 +370,15 @@ export function BacktestPage() {
                   </div>
                 </div>
               </div>
-              <p className={styles.sub} style={{ marginTop: 4 }}>
-                圖上虛線 = 換股成交日；滑鼠移到曲線上可看任一天的持股與當時市值排名。
-              </p>
 
               <p className={styles.note}>
                 回測區間 {span}（約 {result.metrics.years.toFixed(1)}{' '}
-                年）。結果僅供研究，不代表未來績效。 排名用<b>訊號日收盤</b>資料，
-                {cfg.execLagDays === 0
-                  ? '並假設當天收盤即成交（理想，略有前視偏誤）。'
-                  : '隔一個交易日才成交（貼近實務：收盤後才知道排名）。'}
-                選股池是每個再平衡日當下市值前{' '}
-                {Math.min(cfg.poolTopN ?? universeSize, universeSize)} 大
-                （市值用當日股數算），基準是同一池等權。候選 universe 為目前市值前 {universeSize} 檔
-                ——
-                早期曾進榜、但現已掉出的股票不在其中（殘存的存活者偏誤）。報酬以還原權值計算（含配息）；
-                PE/PB/DY 為 FinMind 歷史值。前約 1 年因序列不足，12-1 動能為空。實務還有滑價、
-                整股（1000 股）限制、成交量等未計入。
+                年）。結果僅供研究，不代表未來績效。 候選 universe 為市值前 {universeSize}{' '}
+                檔的歷史聯集；仍有殘存存活者偏誤。實際績效會因滑價、
+                整股限制、成交量等低於回測。詳見下方說明。
               </p>
+
+              <MethodNotes />
             </>
           )}
         </div>
