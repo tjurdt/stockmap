@@ -17,5 +17,6 @@ PRICES_JSON = DATA_DIR / "prices.json"
 HISTORY_DIR = DATA_DIR / "history"
 
 UNIVERSE_SCHEMA = SCHEMA_DIR / "universe.json"
+BACKTEST_UNIVERSE = SCHEMA_DIR / "backtest_universe.json"
 SNAPSHOT_SCHEMA = SCHEMA_DIR / "snapshot.schema.json"
 HISTORY_SCHEMA = SCHEMA_DIR / "history.schema.json"

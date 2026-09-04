@@ -6,7 +6,7 @@ on:
   # 資料類 workflow 用預設 GITHUB_TOKEN commit，不會觸發 push 事件；
   # 改用 workflow_run 在資料更新後接續部署。
   workflow_run:
-    workflows: [fetch-twse, backfill, rank-universe]
+    workflows: [fetch-twse, backfill, rank-universe, universe-history]
     types: [completed]
   workflow_dispatch:
 

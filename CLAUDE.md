@@ -40,8 +40,9 @@ python -m pip install -e "pipeline[dev]"
 pytest pipeline
 ruff check pipeline && ruff format --check pipeline && mypy pipeline/src
 python -m twse_pipeline.daily        # 實際抓資料並覆寫 data/（會打外部 API）
-python -m twse_pipeline.backfill     # 一次性回填約一年（FinMind，會打外部 API）
-python -m twse_pipeline.universe_rank  # 重排市值前 60 名單
+python -m twse_pipeline.backfill     # 一次性回填約 5 年（FinMind，會打外部 API）
+python -m twse_pipeline.universe_rank    # 重排市值前 60 名單
+python -m twse_pipeline.universe_history # 重建回測選股池（過去 N 年市值前段聯集）
 python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 ```
 
@@ -51,7 +52,8 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 
 1. **`data/latest.json` 是前端唯一資料契約。** 前端不在瀏覽器直連證交所（`worker/` 例外，且只給盤中
    延遲報價）。欄位只能往後相容地加；破壞性變更要 bump `schemaVersion`。
-2. **成分股名單只在 `schema/universe.json`，且由 `universe_rank` 產生 —— 勿手改。**
+2. **成分股名單只在 `schema/universe.json`（顯示）與 `schema/backtest_universe.json`（回測池），
+   分別由 `universe_rank` / `universe_history` 產生 —— 勿手改。**
    前端從 snapshot 讀，不讀這個檔。
 3. **因子數學只在 `pipeline/src/twse_pipeline/factors.py`，而且要有測試。** 前端只視覺化算好的值。
    即時模式（`web/src/lib/overlay.ts`）只覆寫價/漲跌/市值，動能維持收盤。

@@ -56,29 +56,35 @@
 
 新的「重」功能預設放管線。只有當它依賴使用者即時輸入、無法預先算好時，才放 web worker。
 
-## 動態名單
+## 兩份名單
 
-`schema/universe.json` 由 `twse_pipeline.universe_rank` 每週一重排：抓 `STOCK_DAY_ALL`（全市場收盤）+
-`opendata/t187ap03_L`（全上市公司已發行股數）→ 算每檔市值 → 取 **前 60**（`TOP_N`）。前端頁面只顯示
-前 `displayCount`（20）檔，其餘供回測的選股池。**進出場門檻**（`KEEP_UNTIL_RANK=70`）讓邊界股不會每週被換掉。
-名單有變時 `rank-universe` workflow 對新進榜股跑部分 `backfill`；被踢出的股票在下次 `daily` 由
-`PriceHistory.prune` 清掉。
+| 檔 | 產生者 | 內容 | 消費者 |
+| --- | --- | --- | --- |
+| `schema/universe.json` | `universe_rank`（每週一）| 市值**前 60**（`TOP_N`），進出場門檻 `KEEP_UNTIL_RANK=70` | `daily` 的 `latest.json`、前端顯示前 `displayCount`(20) 檔 |
+| `schema/backtest_universe.json` | `universe_history`（手動、每 3–6 月）| 過去 N 年**每週市值前 60 的聯集**（~100–140 檔）；解決存活者偏誤 | `backfill` deep 的 `factors-*.jsonl` |
+
+`universe_history` 對過去 N 年每個週五打一次 TWSE `MI_INDEX`（一次給全市場收盤），用現在的股數粗估市值
+排名取前 60 聯集 —— 快、只打 TWSE，邊界誤差被「取 60 不取 50」的緩衝吸收。沒有此檔時 `backfill` 退回
+`universe.json`。
 
 ## 歷史回填
 
-`twse_pipeline.backfill`（整個 universe，`deep=True`）每檔抓 FinMind：`TaiwanStockPrice`（原始收盤）、
+`twse_pipeline.backfill`（deep，用 `backtest_universe`）每檔抓 FinMind：`TaiwanStockPrice`（原始收盤）、
 `TaiwanStockDividend`（配息/除息日）、`TaiwanStockPER`（PE/PB/DY 歷史）、`TaiwanStockShareholding`
 （歷史已發行股數）。`build_adjusted_series` 自行算還原因子（鏡射 `adjustments.py` 的 `ref/before`），
-建出約 5 年還原權值序列。`history.rebuild_from_prices` 用它 + 歷史股數（前向填補）算**逐日 point-in-time
-市值**，整檔重寫 `data/history/factors-YYYY.jsonl`（回測用）；`data/prices.json` 只留最近 400 日（每日算動能）。
+建出約 5 年還原權值序列。`history.rebuild_from_prices` 用它 + **歷史股數**（前向填補）算逐日 point-in-time
+市值，整檔重寫 `data/history/factors-YYYY.jsonl`。`data/prices.json` 只留顯示 universe、最近 400 日（每日算動能）。
+撞 FinMind 額度會保留 `data/history/_backfill` 快取，重跑續抓。
 
 ## 回測
 
-`web/src/features/backtest/engine.ts` —— 純函式：每個再平衡日 (1) 依當日市值取前 `poolTopN` 大為選股池
-(2) 池內依所選因子（`METRICS[key].betterWhen` 決定方向）排名取前 `topN` 檔，等權 / 市值權重持有
-(3) 隨還原價每日變動，下個再平衡日換股，扣交易成本。基準 = 同一選股池等權（每日再平衡）。
-資料源 `loadAllFactorHistory()`（讀 `data/history/` 全部年度）。
-限制：候選 universe 是「目前」前 60，早期曾進榜但已掉出前 60 的股票不在其中；前 ~1 年 mom121 為 null。
+`web/src/features/backtest/engine.ts` —— 純函式：每個再平衡日 (1) 依**當日** point-in-time 市值取前
+`poolTopN` 大為選股池 (2) 池內依所選因子（`METRICS[key].betterWhen` 決定方向）排名取前 `topN` 檔，
+等權 / 市值權重持有 (3) 隨還原價每日變動，下個再平衡日換股，扣交易成本。基準 = 同一選股池等權。
+資料源 `loadAllFactorHistory()`。
+限制：`backtest_universe` 覆蓋「過去 N 年曾進市值前 60」；再往前、或這 N 年都沒進過前 60 的股票不在其中。
+`universe_history` 之後、下次 backfill 之前的新日期，因子列只含顯示 universe(60)（下次 backfill 補回）。
+前約 1 年 mom121 為 null。
 
 ## 盤中報價
 

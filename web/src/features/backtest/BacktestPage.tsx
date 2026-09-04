@@ -61,7 +61,11 @@ export function BacktestPage() {
 
   const history = state.status === 'ready' ? state.data : []
   const lastDate = history.at(-1)?.date
-  const universeSize = history.at(-1)?.stocks.length ?? 0
+  // 每日新增的列只含顯示 universe（~60）；歷史列含完整回測 universe（~120）→ 取最大
+  const universeSize = useMemo(
+    () => history.reduce((m, r) => Math.max(m, r.stocks.length), 0),
+    [history],
+  )
   const [period, setPeriod] = useState<'all' | '3y' | '1y'>('3y')
   const startDate = useMemo(() => {
     if (period === 'all' || !lastDate) return undefined
@@ -92,12 +96,14 @@ export function BacktestPage() {
             onChange={setPeriod}
           />
 
-          <label className={styles.field}>選股池：市值前 {cfg.poolTopN} 大</label>
+          <label className={styles.field}>
+            選股池：市值前 {Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))} 大
+          </label>
           <div className={styles.rangeRow}>
             <input
               type="range"
               min={10}
-              max={60}
+              max={80}
               step={5}
               value={cfg.poolTopN}
               onChange={(e) => patch({ poolTopN: Number(e.target.value) })}

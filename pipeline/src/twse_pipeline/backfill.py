@@ -21,7 +21,7 @@ import sys
 import time
 from datetime import date, timedelta
 
-from .config import UNIVERSE
+from .config import UNIVERSE, load_backtest_universe
 from .history import rebuild_from_prices
 from .paths import HISTORY_DIR, PRICES_JSON
 from .prices import CAP, PriceHistory
@@ -141,10 +141,9 @@ def _clear_cache() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="歷史回填")
-    ap.add_argument("--codes", default="", help="逗號分隔股票代號；空 = 整個 universe")
+    ap.add_argument("--codes", default="", help="逗號分隔股票代號；空 = 整個回測 universe")
     args = ap.parse_args(argv)
     only = [c.strip() for c in args.codes.split(",") if c.strip()]
-    keep = {c.code for c in UNIVERSE}
 
     if only:
         # 部分回填（新進榜股）：更新 prices.json，factor history 由每日管線往後補
@@ -154,15 +153,16 @@ def main(argv: list[str] | None = None) -> int:
             if code in cache:
                 d = cache[code]
                 hist.set_series(code, d["dates"], d["adj"], d["raw"])
-        hist.prune(keep)
+        hist.prune({c.code for c in UNIVERSE})
         hist.capped(CAP).save(PRICES_JSON)
         _clear_cache()
         print(f"部分回填完成：{only}")
         return 0
 
-    # 整個 universe：完整區間重建 factor history（含 PE/PB/DY + 歷史股數）
-    all_codes = [c.code for c in UNIVERSE]
-    cache, complete = backfill(all_codes, deep=True)
+    # 整個回測 universe：完整區間重建 factor history（含 PE/PB/DY + 歷史股數）
+    bt_universe = load_backtest_universe()  # 有 backtest_universe.json 就用它，否則 universe.json
+    keep = {c.code for c in bt_universe}
+    cache, complete = backfill([c.code for c in bt_universe], deep=True)
     if not complete:
         return 0  # 快取已保留，晚點重跑
 
@@ -175,10 +175,12 @@ def main(argv: list[str] | None = None) -> int:
         shares[code] = d.get("shares", {})
     full.prune(keep)
 
-    rows = rebuild_from_prices(UNIVERSE, full, valuation=valuation, shares=shares)
-    full.capped(CAP).save(PRICES_JSON)
+    rows = rebuild_from_prices(bt_universe, full, valuation=valuation, shares=shares)
+    daily_prices = full.capped(CAP)  # prices.json 只給每日管線算動能 → 顯示 universe 就夠
+    daily_prices.prune({c.code for c in UNIVERSE})
+    daily_prices.save(PRICES_JSON)
     _clear_cache()
-    print(f"回填完成，完整序列 {full.max_len()} 交易日，重建 factor history {rows} 列")
+    print(f"回填完成，回測 universe {len(bt_universe)} 檔，重建 factor history {rows} 列")
     return 0
 
 
