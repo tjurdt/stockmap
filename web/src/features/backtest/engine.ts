@@ -6,12 +6,14 @@
  *
  * 資料量小（~數年 × 20 檔），跑在主執行緒 <10ms；若日後歷史拉長到十幾年再考慮搬 web worker。
  */
+import type { BaselineRow } from '../../lib/baselines'
 import type { HistoryRow } from '../../lib/history'
 import { METRICS, type MetricKey } from '../../lib/metrics'
 
 export type Rebalance = 'W' | 'M'
 export type Weighting = 'equal' | 'mcap'
 export type StopType = 'none' | 'fixed' | 'trailing'
+export type RegimeIndicator = 'off' | 'ma' | 'mom'
 
 /** 可當排名因子的欄位（history jsonl 有、且排名有意義的）。 */
 export const BACKTEST_FACTORS: MetricKey[] = ['m20', 'm60', 'm121', 'pe', 'pb', 'dy', 'mcap']
@@ -38,6 +40,14 @@ export interface BacktestConfig {
    */
   stopType?: StopType
   stopPct?: number
+  /**
+   * 多空環境過濾（用加權報酬指數判斷）。off = 關（預設）。
+   * ma：指數在自身 regimeDays 日均線之上 = 多頭，之下 = 空頭。
+   * mom：指數 regimeDays 日報酬率 > 0 = 多頭。
+   * 空頭的再平衡日改持有現金，直到轉多。
+   */
+  regime?: RegimeIndicator
+  regimeDays?: number
   /** 起始 / 結束日 YYYY-MM-DD；省略 = 資料全範圍 */
   startDate?: string
   endDate?: string
@@ -55,6 +65,8 @@ export interface BacktestMetrics {
   rebalances: number
   /** 停損出場次數 */
   stops: number
+  /** 空頭天數佔比（regime = off 時為 0） */
+  bearShare: number
   tradingDays: number
   years: number
 }
@@ -72,6 +84,8 @@ export interface BacktestResult {
   equity: number[]
   benchmark: number[]
   drawdown: number[]
+  /** 每日多空環境（regime = off 時全 'bull'） */
+  regime: ('bull' | 'bear')[]
   holdings: RebalanceEvent[]
   metrics: BacktestMetrics
 }
@@ -192,7 +206,53 @@ function turnoverOf(from: Map<string, number>, to: Map<string, number>): number 
   return sum / 2 // 單邊
 }
 
-export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): BacktestResult {
+/**
+ * 用加權報酬指數逐日判斷多空。回傳 date → 'bull' | 'bear'。
+ * off / 無指數資料 → 全 'bull'。
+ */
+export function regimeByDate(
+  dates: string[],
+  baselines: BaselineRow[],
+  indicator: RegimeIndicator,
+  lookback: number,
+): Map<string, 'bull' | 'bear'> {
+  const out = new Map<string, 'bull' | 'bear'>()
+  const idx = baselines.filter((b) => b.twiiTR != null).sort((a, b) => a.date.localeCompare(b.date))
+  const lv = idx.map((b) => b.twiiTR!)
+  const dt = idx.map((b) => b.date)
+
+  if (indicator === 'off' || lv.length < lookback + 1) {
+    for (const d of dates) out.set(d, 'bull')
+    return out
+  }
+
+  let j = 0
+  for (const d of dates) {
+    while (j < dt.length && dt[j]! <= d) j++
+    const k = j - 1 // 最後一個交易日 <= d
+    if (k < lookback) {
+      out.set(d, 'bull')
+      continue
+    }
+    const cur = lv[k]!
+    let bull: boolean
+    if (indicator === 'ma') {
+      let s = 0
+      for (let m = k - lookback; m <= k; m++) s += lv[m]!
+      bull = cur > s / (lookback + 1)
+    } else {
+      bull = cur / lv[k - lookback]! - 1 > 0
+    }
+    out.set(d, bull ? 'bull' : 'bear')
+  }
+  return out
+}
+
+export function runBacktest(
+  history: HistoryRow[],
+  cfg: BacktestConfig,
+  baselines: BaselineRow[] = [],
+): BacktestResult {
   const rows = history
     .filter(
       (r) => (!cfg.startDate || r.date >= cfg.startDate) && (!cfg.endDate || r.date <= cfg.endDate),
@@ -202,8 +262,16 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
   const dates: string[] = []
   const equity: number[] = []
   const benchmark: number[] = []
+  const regime: ('bull' | 'bear')[] = []
   const holdings: BacktestResult['holdings'] = []
   const dailyEq: number[] = []
+
+  const regimeMap = regimeByDate(
+    rows.map((r) => r.date),
+    baselines,
+    cfg.regime ?? 'off',
+    cfg.regimeDays ?? 200,
+  )
 
   let eq = 1
   let bench = 1
@@ -276,19 +344,21 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       }
     }
 
-    // 到了成交日 → 換股
+    // 到了成交日 → 換股（空頭時就算 target 是空的也要換 = 出清持股）
     if (pending && i >= pending.applyAt) {
-      if (pending.target.size > 0) applyRebalance(pending.target, row.date, pending.signalDate, adj)
+      applyRebalance(pending.target, row.date, pending.signalDate, adj)
       pending = null
     }
 
-    // 訊號日 → 排名（用當日資料），排定 lag 個交易日後成交
+    // 訊號日 → 排名（用當日資料）；空頭則目標 = 現金
     const key = rebalanceKey(row.date, cfg.rebalance)
     if (key !== lastRebalKey) {
       lastRebalKey = key
-      pending = { target: targetWeights(row, cfg), applyAt: i + lag, signalDate: row.date }
-      if (lag === 0 && pending.target.size > 0) {
-        applyRebalance(pending.target, row.date, row.date, adj)
+      const bear = regimeMap.get(row.date) === 'bear'
+      const target = bear ? new Map<string, number>() : targetWeights(row, cfg)
+      pending = { target, applyAt: i + lag, signalDate: row.date }
+      if (lag === 0) {
+        applyRebalance(target, row.date, row.date, adj)
         pending = null
       }
     }
@@ -296,6 +366,7 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
     dates.push(row.date)
     equity.push(eq)
     benchmark.push(bench)
+    regime.push(regimeMap.get(row.date) ?? 'bull')
   }
 
   // 回測結束時還沒成交的最新排名 → 當成「下次要換成的持股」顯示
@@ -325,6 +396,7 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
     equity,
     benchmark,
     drawdown,
+    regime,
     holdings,
     metrics: {
       totalReturn: eq - 1,
@@ -336,6 +408,7 @@ export function runBacktest(history: HistoryRow[], cfg: BacktestConfig): Backtes
       turnover: turnovers.length ? turnovers.reduce((a, b) => a + b, 0) / turnovers.length : 0,
       rebalances: turnovers.length,
       stops,
+      bearShare: regime.length ? regime.filter((r) => r === 'bear').length / regime.length : 0,
       tradingDays: dates.length,
       years,
     },

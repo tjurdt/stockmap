@@ -11,6 +11,7 @@ import {
   runBacktest,
   type BacktestConfig,
   type Rebalance,
+  type RegimeIndicator,
   type StopType,
   type Weighting,
 } from './engine'
@@ -29,6 +30,8 @@ const DEFAULT: BacktestConfig = {
   execLagDays: 1,
   stopType: 'none',
   stopPct: 20,
+  regime: 'off',
+  regimeDays: 200,
 }
 
 const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
@@ -101,9 +104,10 @@ export function BacktestPage() {
     [startMonth, endMonth],
   )
 
+  const blData = baselines.status === 'ready' ? baselines.data : []
   const result = useMemo(
-    () => (history.length > 1 ? runBacktest(history, { ...cfg, ...range }) : null),
-    [history, cfg, range],
+    () => (history.length > 1 ? runBacktest(history, { ...cfg, ...range }, blData) : null),
+    [history, cfg, range, blData],
   )
 
   const span = result?.dates.length ? `${result.dates[0]} ~ ${result.dates.at(-1)}` : ''
@@ -137,7 +141,7 @@ export function BacktestPage() {
       { label: '策略', values: result.equity, color: 'var(--accent)' },
       { label: `基準（前 ${poolShown} 等權）`, values: result.benchmark, color: 'var(--muted)' },
     ]
-    const bl = baselines.status === 'ready' ? baselines.data : []
+    const bl = blData
     if (refs.twii) {
       const v = alignNormalized(bl, result.dates, 'twiiTR')
       if (v) s.push({ label: '大盤(報酬)', values: v, color: '#c8862b', dashed: true })
@@ -147,7 +151,7 @@ export function BacktestPage() {
       if (v) s.push({ label: '0050', values: v, color: '#5b8c5a', dashed: true })
     }
     return s
-  }, [result, baselines, refs, poolShown])
+  }, [result, blData, refs, poolShown])
 
   return (
     <Layout asOf={span && `回測區間 ${span}`}>
@@ -261,6 +265,32 @@ export function BacktestPage() {
             </div>
           )}
 
+          <label className={styles.field}>多空過濾（大盤）</label>
+          <Radio<RegimeIndicator>
+            value={cfg.regime ?? 'off'}
+            options={[
+              ['off', '關'],
+              ['ma', '均線'],
+              ['mom', '動能'],
+            ]}
+            onChange={(v) => patch({ regime: v })}
+          />
+          {cfg.regime !== 'off' && (
+            <div className={styles.rangeRow}>
+              <input
+                type="number"
+                min={20}
+                max={300}
+                step={10}
+                value={cfg.regimeDays}
+                onChange={(e) => patch({ regimeDays: Number(e.target.value) })}
+              />
+              <span className={styles.sub}>
+                日 {cfg.regime === 'ma' ? '（指數 > 均線 = 多）' : '（指數 N 日報酬 > 0 = 多）'}
+              </span>
+            </div>
+          )}
+
           <label className={styles.field}>權重</label>
           <Radio<Weighting>
             value={cfg.weighting}
@@ -292,6 +322,7 @@ export function BacktestPage() {
                 dates={result.dates}
                 series={series}
                 markers={view.markers}
+                regime={cfg.regime !== 'off' ? result.regime : undefined}
                 cursor={cursor}
                 onCursor={setHover}
                 onPin={(i) => setPinned((p) => (p === i ? null : i))}
@@ -352,6 +383,12 @@ export function BacktestPage() {
                   label="再平衡 / 停損"
                   value={`${result.metrics.rebalances} / ${result.metrics.stops}`}
                 />
+                {cfg.regime !== 'off' && (
+                  <Stat
+                    label="空頭空手佔比"
+                    value={`${(result.metrics.bearShare * 100).toFixed(0)}%`}
+                  />
+                )}
               </div>
 
               <div className={styles.snapshot}>

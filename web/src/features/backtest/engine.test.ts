@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import type { BaselineRow } from '../../lib/baselines'
 import type { HistoryRow } from '../../lib/history'
-import { runBacktest } from './engine'
+import { regimeByDate, runBacktest } from './engine'
 
 function row(
   date: string,
@@ -155,6 +156,43 @@ describe('runBacktest', () => {
     expect(r.metrics.stops).toBe(1)
     // 120 * 0.9 = 108 → 第一個 <= 108 是 105（index 7）→ 停在 105/100 - 1 = +5%
     expect(r.metrics.totalReturn).toBeCloseTo(0.05, 2)
+  })
+
+  it('regimeByDate: 均線之上 = bull、之下 = bear', () => {
+    // 指數前 5 天 100，第 6 天跌到 80 → 6 日均線 ~96.7，80 < 96.7 → bear
+    const bl: BaselineRow[] = [100, 100, 100, 100, 100, 80].map((v, i) => ({
+      date: `2026-06-0${i + 1}`,
+      twiiTR: v,
+    }))
+    const dates = bl.map((b) => b.date)
+    const m = regimeByDate(dates, bl, 'ma', 5)
+    expect(m.get('2026-06-05')).toBe('bull')
+    expect(m.get('2026-06-06')).toBe('bear')
+  })
+
+  it('regime 過濾：空頭再平衡日改持有現金', () => {
+    // 指數持續下跌 → 一直空頭。A 每天漲但策略在空頭被要求空手 → 報酬接近 0。
+    const days = 25
+    const h = history(days)
+    const bl: BaselineRow[] = Array.from({ length: days }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      twiiTR: 100 - i, // 一路跌
+    }))
+    const cfg = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'W' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+    }
+    const on = runBacktest(h, { ...cfg, regime: 'ma', regimeDays: 5 }, bl)
+    const off = runBacktest(h, cfg, bl)
+    // 空頭時空手 → 少賺，且大部分時間標記為空頭
+    expect(on.metrics.totalReturn).toBeLessThan(off.metrics.totalReturn * 0.7)
+    expect(off.metrics.totalReturn).toBeGreaterThan(0.1)
+    expect(on.metrics.bearShare).toBeGreaterThan(0.5)
+    expect(on.regime.filter((r) => r === 'bear').length).toBeGreaterThan(10)
   })
 
   it('returns empty-ish result when history too short', () => {

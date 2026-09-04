@@ -22,13 +22,37 @@ interface Props {
   series: Series[]
   /** 換股成交日的索引，畫成虛線 */
   markers?: number[]
+  /** 每日多空環境；空頭區間畫淺紅底 */
+  regime?: ('bull' | 'bear')[]
   /** 目前游標索引（null = 沒懸停 / 未鎖定，顯示最後一天） */
   cursor: number | null
   onCursor: (i: number | null) => void
   onPin?: (i: number) => void
 }
 
-export function EquityChart({ dates, series, markers = [], cursor, onCursor, onPin }: Props) {
+function bearSpans(regime: ('bull' | 'bear')[]): [number, number][] {
+  const spans: [number, number][] = []
+  let start = -1
+  regime.forEach((r, i) => {
+    if (r === 'bear' && start < 0) start = i
+    else if (r !== 'bear' && start >= 0) {
+      spans.push([start, i - 1])
+      start = -1
+    }
+  })
+  if (start >= 0) spans.push([start, regime.length - 1])
+  return spans
+}
+
+export function EquityChart({
+  dates,
+  series,
+  markers = [],
+  regime = [],
+  cursor,
+  onCursor,
+  onPin,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   if (dates.length < 2) return null
 
@@ -61,6 +85,17 @@ export function EquityChart({ dates, series, markers = [], cursor, onCursor, onP
         onMouseLeave={() => onCursor(null)}
         onClick={(e) => onPin?.(idxFromEvent(e.clientX))}
       >
+        {/* 空頭區間淺紅底 */}
+        {bearSpans(regime).map(([a, b]) => (
+          <rect
+            key={`bear${a}`}
+            className={styles.bearBand}
+            x={x(a)}
+            y={M.t}
+            width={Math.max(1, x(b) - x(a))}
+            height={H - M.b - M.t}
+          />
+        ))}
         {yTicks.map((t) => (
           <g key={t}>
             <line className={styles.grid} x1={M.l} y1={y(t)} x2={W - M.r} y2={y(t)} />

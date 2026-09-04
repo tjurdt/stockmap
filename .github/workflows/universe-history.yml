@@ -3,6 +3,8 @@ name: universe-history
 # 重建回測選股池（過去 N 年每週市值前段的聯集）+ 深度回填其歷史。手動觸發。
 # 需要 FINMIND_TOKEN secret（免費註冊）。跑一次約 15–25 分鐘；建議每 3～6 個月重跑一次。
 on:
+  schedule:
+    - cron: '0 2 1 1,4,7,10 *' # 每季 1 號 10:00 TPE，讓回測選股池保持新鮮
   workflow_dispatch:
     inputs:
       years:
@@ -31,7 +33,7 @@ jobs:
       - run: python -m pip install -e pipeline
 
       - name: Build backtest universe (TWSE MI_INDEX 週五快照聯集)
-        run: python -m twse_pipeline.universe_history --years "${{ inputs.years }}" --top "${{ inputs.top }}"
+        run: python -m twse_pipeline.universe_history --years "${{ inputs.years || '3' }}" --top "${{ inputs.top || '60' }}"
 
       - name: Restore backfill cache
         uses: actions/cache@v4

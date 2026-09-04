@@ -148,6 +148,10 @@
   stroke-dasharray: 2 3;
   opacity: 0.35;
 }
+.bearBand {
+  fill: var(--down);
+  opacity: 0.08;
+}
 .cursorLine {
   stroke: var(--ink);
   stroke-width: 1;
