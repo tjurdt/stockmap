@@ -9,7 +9,7 @@ import { loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import { useHoldings, type Position } from '../../lib/portfolio'
-import { rankTargets, rebalanceKey, regimeByDate } from '../backtest/engine'
+import { isRebalanceDay, nextRebalanceDate, rankTargets, regimeByDate } from '../backtest/engine'
 import { decodeParams } from '../backtest/strategyParams'
 import { HoldingsEditor } from './HoldingsEditor'
 import styles from './signal.module.css'
@@ -42,9 +42,12 @@ export function SignalPage() {
     const regime =
       regimeByDate([lastRow.date], baselines, p.regime, p.regimeDays).get(lastRow.date) ?? 'bull'
     const targets = regime === 'bear' ? [] : rankTargets(lastRow, { ...p, costBps: 0 })
-    const isRebalDay =
-      !!prevRow &&
-      rebalanceKey(prevRow.date, p.rebalance) !== rebalanceKey(lastRow.date, p.rebalance)
+    const isRebalDay = isRebalanceDay(
+      rows.map((r) => r.date),
+      lastRow.date,
+      p.rebalance,
+      p.rebalanceDay,
+    )
     // 每檔自買進日以來的最高價（含當日收盤），供移動停損
     const peakSince = (code: string, from: string): number => {
       let mx = 0
@@ -55,15 +58,7 @@ export function SignalPage() {
       }
       return mx
     }
-    // 下次換股日（近似：下個月 / 下週一，遇假日順延到週一）
-    const d = new Date(`${lastRow.date}T00:00:00Z`)
-    if (p.rebalance === 'M') {
-      d.setUTCMonth(d.getUTCMonth() + 1, 1)
-    } else {
-      d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7 || 7))
-    }
-    while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1)
-    const nextRebal = d.toISOString().slice(0, 10)
+    const nextRebal = nextRebalanceDate(lastRow.date, p.rebalance, p.rebalanceDay)
     return { regime, targets, isRebalDay, peakSince, lastDate: lastRow.date, nextRebal }
   }, [lastRow, prevRow, rows, bl, p])
 
@@ -141,8 +136,9 @@ export function SignalPage() {
           </p>
         ) : (
           <p>
-            <b>今天不是換股日。</b>下次換股：{p.rebalance === 'M' ? '10 月' : '下週'}
-            第一個交易日（約 <b>{model.nextRebal}</b>）。在那之前：
+            <b>今天不是換股日。</b>下次換股：{p.rebalance === 'M' ? '每月' : '每週'}第{' '}
+            {p.rebalanceDay} {p.rebalance === 'M' ? '日' : '天'}附近（約 <b>{model.nextRebal}</b>
+            ）。在那之前：
             <br />• 已在跑這個策略 → <b>抱著上次換股買的不動</b>，只有跌破停損才賣。
             <br />• 還沒開始跑 → 可以現在照下方「目標持股」進場，之後每逢換股日再平衡。
             <br />※ 下方「目標持股」是「假如今天就是換股日」的排名，到 {model.nextRebal}{' '}

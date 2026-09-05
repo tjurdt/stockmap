@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/tjurdt/stockmap/schema/operator_plan.schema.json",
+  "title": "StockMap operator plan",
+  "description": "操作計畫：策略設定 + 上線日 + 目前持股。存在 GitHub Actions secret OPERATOR_PLAN，供每晚提醒信使用。前端 zod schema 見 web/src/lib/plan.ts。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "startDate", "strategy", "holdings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "startDate": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "策略上線日；此日之前提醒信只給「上線當天要買的目標清單」"
+    },
+    "strategy": { "$ref": "#/definitions/strategy" },
+    "holdings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/position" },
+      "description": "目前實際持股；空陣列 = 尚未進場"
+    }
+  },
+  "definitions": {
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factor", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
+        "execLagDays", "stopType", "stopPct", "regime", "regimeDays", "regimeExit"
+      ],
+      "properties": {
+        "factor": {
+          "enum": ["price", "mcap", "pe", "pb", "dy", "chg", "turn", "m20", "m60", "m121"],
+          "description": "排名因子 key（對齊 web/src/lib/metrics.ts）"
+        },
+        "topN": { "type": "integer", "minimum": 1, "description": "持股檔數" },
+        "poolTopN": { "type": "integer", "minimum": 1, "description": "選股池：當日市值前 N 大" },
+        "rebalance": { "enum": ["W", "M"], "description": "再平衡頻率：每週 / 每月" },
+        "rebalanceDay": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 28,
+          "description": "換股時點：M→每月第幾日；W→每週星期幾 (1=一 … 5=五)"
+        },
+        "weighting": { "enum": ["equal", "mcap"], "description": "等權 / 市值權重" },
+        "execLagDays": { "enum": [0, 1], "description": "訊號日到成交隔幾個交易日" },
+        "stopType": { "enum": ["none", "fixed", "trailing"], "description": "停損型態" },
+        "stopPct": { "type": "number", "exclusiveMinimum": 0, "description": "停損百分比" },
+        "regime": { "enum": ["off", "ma", "mom"], "description": "大盤多空過濾指標" },
+        "regimeDays": { "type": "integer", "minimum": 1, "description": "多空指標回看天數" },
+        "regimeExit": {
+          "enum": ["rebalance", "immediate"],
+          "description": "轉空反應：撐到換股日 / 立刻清空"
+        }
+      }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "shares", "entryPrice", "entryDate"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^\\d{4}$" },
+        "shares": { "type": "number", "exclusiveMinimum": 0 },
+        "entryPrice": { "type": "number", "exclusiveMinimum": 0 },
+        "entryDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+      }
+    }
+  }
+}

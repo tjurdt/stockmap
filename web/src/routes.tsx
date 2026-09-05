@@ -1,6 +1,7 @@
 import { createHashRouter } from 'react-router-dom'
 
 import { BacktestPage } from './features/backtest/BacktestPage'
+import { PlannerPage } from './features/planner/PlannerPage'
 import { RankingPage } from './features/ranking/RankingPage'
 import { ScatterPage } from './features/scatter/ScatterPage'
 import { SignalPage } from './features/signal/SignalPage'
@@ -13,4 +14,5 @@ export const router = createHashRouter([
   { path: '/stock/:code', element: <StockPage /> },
   { path: '/backtest', element: <BacktestPage /> },
   { path: '/signal', element: <SignalPage /> },
+  { path: '/plan', element: <PlannerPage /> },
 ])

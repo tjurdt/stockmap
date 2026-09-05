@@ -34,6 +34,16 @@ def main() -> int:
         except jsonschema.ValidationError as e:
             errors.append(f"{f.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})")
 
+    plan_example = SCHEMA / "operator_plan.example.json"
+    if plan_example.exists():
+        try:
+            jsonschema.validate(_load(plan_example), _load(SCHEMA / "operator_plan.schema.json"))
+            print(f"ok  {plan_example.relative_to(ROOT)}")
+        except jsonschema.ValidationError as e:
+            errors.append(
+                f"{plan_example.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})"
+            )
+
     latest = DATA / "latest.json"
     if latest.exists():
         try:

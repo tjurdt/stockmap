@@ -20,6 +20,8 @@ docs/       架構與擴充 playbook
 | `rank-universe` | 每週一 16:00 TPE | 依全市場市值重排前 60 名單，新進榜股自動回填 |
 | `deploy` | push / 上述資料 workflow 完成後 | build 前端 + 併入 `data/` → GitHub Pages |
 | `ci` | PR / push | web + pipeline + schema + worker 檢查 |
+| `notify` | 每交易日 19:00 TPE | 依 `OPERATOR_PLAN` secret 算操作訊號，寄每日提醒信（見下） |
+| `data-freshness` | 每日 11:00 TPE | `data/` 停擺超過 4 天就開 issue |
 | `deploy-worker` | push `worker/**`（需設定）| 部署盤中報價 proxy |
 
 **`FINMIND_TOKEN`**：整個 universe 的 `backfill` 會超過 FinMind 免費未登入的小時額度。
@@ -51,6 +53,23 @@ python -m twse_pipeline.daily          # 實抓一次，覆寫 data/（會打外
 
 若跳過 `backfill`：首次部署時歷史序列只有 1 筆，動能欄位顯示 `—`，約 21 個交易日後 `近月動能`
 才出現、250 日後 `12-1 動能` 才完整。
+
+### 每日操作提醒信（`notify` workflow）
+
+網站「操作計畫」頁：選好策略（因子 / 檔數 / 停損 / 多空過濾在回測頁調）、設上線日與「每月幾號 /
+每週幾」換股、填目前持股 → 按「複製設定 JSON」。設定同時存在瀏覽器，但每晚寄信的**單一事實來源**
+是 GitHub secret。需在 **Settings → Secrets and variables → Actions** 設四個 secret：
+
+| Secret | 內容 |
+| --- | --- |
+| `OPERATOR_PLAN` | 「操作計畫」頁複製出來的 JSON（格式：`schema/operator_plan.schema.json`） |
+| `MAIL_USERNAME` | 寄件 Gmail 位址 |
+| `MAIL_PASSWORD` | 該 Gmail 的**應用程式密碼**（需先開兩步驟驗證，非登入密碼） |
+| `MAIL_TO` | 收件人 email |
+
+改策略 / 換股後重新複製 JSON、更新 `OPERATOR_PLAN` 即可（約每月一次）。信件內容：明天是否換股 +
+買賣清單、停損警示、大盤多空與轉變、目標持股排名與損益。缺 `OPERATOR_PLAN` 時 `notify` 不寄信。
+可在 Actions 頁手動觸發 `notify` 測試。
 
 ### 盤中報價
 

@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import type { BaselineRow } from '../../lib/baselines'
 import type { HistoryRow } from '../../lib/history'
-import { regimeByDate, runBacktest } from './engine'
+import {
+  isRebalanceDay,
+  nextRebalanceDate,
+  rebalanceDates,
+  regimeByDate,
+  runBacktest,
+} from './engine'
 
 function row(
   date: string,
@@ -236,6 +242,48 @@ describe('runBacktest', () => {
     expect(r.metrics.rebalances).toBeGreaterThanOrEqual(0)
   })
 
+  it('rebalanceDay: 每月第 N 個交易日才換股，回測結果隨之改變', () => {
+    // A 每天漲 1%，B 持平。跨兩個月。rebalanceDay=1 →月初就進場；=15 →月中才進場。
+    const h = Array.from({ length: 45 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 0, 1 + i))
+      return row(d.toISOString().slice(0, 10), [
+        { code: '1111', adj: 100 * 1.01 ** i, f: 50 },
+        { code: '2222', adj: 100, f: -50 },
+      ])
+    })
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+    }
+    const day1 = runBacktest(h, { ...base, rebalanceDay: 1 })
+    const day15 = runBacktest(h, { ...base, rebalanceDay: 15 })
+    // 第一次換股日：day1 是 1/1，day15 是第一個 day-of-month >= 15 的交易日
+    expect(day1.holdings[0]!.signalDate).toBe('2026-01-01')
+    expect(day15.holdings[0]!.signalDate.slice(0, 7)).toBe('2026-01')
+    expect(Number(day15.holdings[0]!.signalDate.slice(8, 10))).toBeGreaterThanOrEqual(15)
+    // 晚進場 → 少賺
+    expect(day15.metrics.totalReturn).toBeLessThan(day1.metrics.totalReturn)
+  })
+
+  it('rebalanceDay 預設 1 時與舊「當期第一個交易日」行為一致', () => {
+    const h = history(28)
+    const cfg = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+    }
+    const withDefault = runBacktest(h, cfg)
+    const explicit1 = runBacktest(h, { ...cfg, rebalanceDay: 1 })
+    expect(withDefault.equity.at(-1)).toBe(explicit1.equity.at(-1))
+    expect(withDefault.holdings[0]!.signalDate).toBe(h[0]!.date)
+  })
+
   it('poolTopN filters to the biggest stocks before ranking by factor', () => {
     // C 動能最強但市值小；A/B 市值大。poolTopN=2 → C 不在池內，不會被選。
     const h = Array.from({ length: 15 }, (_, i) =>
@@ -263,5 +311,62 @@ describe('runBacktest', () => {
       costBps: 0,
     })
     expect(noPool.holdings.at(-1)!.codes).toEqual(['3333']) // 沒池限制 → 選動能最強的 C
+  })
+})
+
+describe('rebalanceDates', () => {
+  // 2026-01：01(四)…；2026-02：…。用整個一月＋二月初的日曆日（含週末）當交易日近似。
+  const jan = Array.from({ length: 45 }, (_, i) =>
+    new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10),
+  )
+
+  it('每月：取第一個 day-of-month >= N 的日期', () => {
+    const s = rebalanceDates(jan, 'M', 10)
+    expect(s.has('2026-01-10')).toBe(true)
+    expect(s.has('2026-01-01')).toBe(false)
+    expect(s.has('2026-02-10')).toBe(true)
+    expect(s.size).toBe(2)
+  })
+
+  it('每月 N=1 → 每期第一個交易日', () => {
+    const s = rebalanceDates(['2026-01-05', '2026-01-06', '2026-02-02'], 'M', 1)
+    expect([...s].sort()).toEqual(['2026-01-05', '2026-02-02'])
+  })
+
+  it('該期無交易日達門檻 → 取該期最後一個交易日', () => {
+    const s = rebalanceDates(['2026-01-05', '2026-01-06', '2026-01-07'], 'M', 20)
+    expect([...s]).toEqual(['2026-01-07'])
+  })
+
+  it('每週：取該週第一個星期 >= W 的日期（W=3 → 週三）', () => {
+    // 2026-01-05 是週一
+    const wk = ['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09']
+    const s = rebalanceDates(wk, 'W', 3)
+    expect([...s]).toEqual(['2026-01-07'])
+  })
+})
+
+describe('isRebalanceDay', () => {
+  const wk = ['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09']
+
+  it('每期第一個達門檻的交易日 → true，其餘 → false', () => {
+    expect(isRebalanceDay(wk, '2026-01-07', 'W', 3)).toBe(true)
+    expect(isRebalanceDay(wk, '2026-01-08', 'W', 3)).toBe(false)
+    expect(isRebalanceDay(wk, '2026-01-06', 'W', 3)).toBe(false)
+  })
+
+  it('當期尚未達門檻 → false（不回填最後一天）', () => {
+    expect(isRebalanceDay(['2026-01-05', '2026-01-06'], '2026-01-06', 'M', 20)).toBe(false)
+  })
+})
+
+describe('nextRebalanceDate', () => {
+  it('每月：回傳下一個到達 N 號的日期（遇週末順延）', () => {
+    expect(nextRebalanceDate('2026-01-03', 'M', 10)).toBe('2026-01-12') // 1/10 是週六 → 1/12(一)
+    expect(nextRebalanceDate('2026-01-20', 'M', 10)).toBe('2026-02-10')
+  })
+
+  it('每週：回傳下一個指定星期（W=1 → 下週一）', () => {
+    expect(nextRebalanceDate('2026-01-07', 'W', 1)).toBe('2026-01-12') // 週三 → 下週一
   })
 })

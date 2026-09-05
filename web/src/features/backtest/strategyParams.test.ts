@@ -9,6 +9,7 @@ describe('strategyParams', () => {
       topN: 3,
       poolTopN: 40,
       rebalance: 'W' as const,
+      rebalanceDay: 3,
       weighting: 'mcap' as const,
       execLagDays: 0,
       stopType: 'trailing' as const,
@@ -26,9 +27,10 @@ describe('strategyParams', () => {
   })
 
   it('非法值退回預設', () => {
-    const d = decodeParams('?topN=-1&rebal=X&stop=weird&regime=nope')
+    const d = decodeParams('?topN=-1&rebal=X&stop=weird&regime=nope&rebalDay=99')
     expect(d.topN).toBe(DEFAULT_PARAMS.topN)
     expect(d.rebalance).toBe('M')
+    expect(d.rebalanceDay).toBe(28) // clamp 到 1–28
     expect(d.stopType).toBe('none')
     expect(d.regime).toBe('off')
   })

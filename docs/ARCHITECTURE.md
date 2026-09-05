@@ -41,6 +41,7 @@
 | `data/history/factors-YYYY.jsonl` | `twse_pipeline.history` | 回測 / 因子績效 | `schema/history.schema.json` ↔ `web/src/lib/history.ts` (zod) |
 | `schema/universe.json` | 人工維護 | `twse_pipeline.config` | 成分股 + 在外流通股數 |
 | `data/prices.json` | `twse_pipeline.prices` | 只有管線自己（算動能） | 內部格式，前端不讀 |
+| `OPERATOR_PLAN` (secret) | 網站「操作計畫」頁 | `notify` workflow（`web/scripts/operator-report.ts`） | `schema/operator_plan.schema.json` ↔ `web/src/lib/plan.ts` (zod) |
 
 改契約的規則：**加欄位**往後相容，schema 與 zod 兩邊都加即可。**改/刪欄位**是破壞性變更，
 必須 bump `schemaVersion`，並在前端處理舊版本（或接受舊部署短暫壞掉）。
@@ -87,6 +88,21 @@
 限制：`backtest_universe` 覆蓋「過去 N 年曾進市值前 60」；再往前、或這 N 年都沒進過前 60 的股票不在其中。
 `universe_history` 之後、下次 backfill 之前的新日期，因子列只含顯示 universe(60)（下次 backfill 補回）。
 前約 1 年 mom121 為 null。
+
+## 操作計畫與每日提醒信
+
+`engine.ts` 的換股時點由 `rebalanceDay` 決定（`M`：每月第幾日；`W`：每週星期幾，預設 1 = 當期
+第一個交易日，向後相容）。`rebalanceDates`（回測用，當期沒達標則回填最後一個交易日）與
+`isRebalanceDay` / `nextRebalanceDate`（即時訊號用，不回填）共用同一套錨定邏輯。
+
+`web/src/features/signal/report.ts` 的 `buildOperatorReport(history, baselines, plan, names)` 是純函式，
+吃一份操作計畫（策略 + 上線日 + 目前持股）吐出「今天收盤後該知道的一切」。三處消費：訊號頁、
+操作計畫頁預覽（`ReportView.tsx`）、每晚提醒信（`web/scripts/operator-report.ts`，`npm run report`，
+以 `tsx` 執行、讀 committed `data/` + `OPERATOR_PLAN` env、寫 `web/tmp/email.{html,txt}`）。
+
+計畫本身不 commit（含持股成本）：網站端存 localStorage，寄信端存 GitHub secret `OPERATOR_PLAN`。
+`notify` workflow 每交易日 19:00 TPE 跑腳本、用 `dawidd6/action-send-mail` + Gmail SMTP 寄出；
+缺 secret 就不寄。
 
 ## 盤中報價
 

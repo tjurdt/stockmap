@@ -24,6 +24,11 @@ export interface BacktestConfig {
   factor: MetricKey
   topN: number
   rebalance: Rebalance
+  /**
+   * 換股時點：`rebalance='M'` 時＝每月第幾日（1–28，遇假日順延到當期第一個交易日）；
+   * `rebalance='W'` 時＝每週星期幾（1=一 … 5=五）。省略 = 1（＝當期第一個交易日，等同舊行為）。
+   */
+  rebalanceDay?: number
   weighting: Weighting
   /** 單邊換手的交易成本（基點，1 bp = 0.01%）。台股含手續費 + 證交稅約 20–45 bp。 */
   costBps: number
@@ -115,6 +120,76 @@ function isoWeekKey(iso: string): string {
 
 export function rebalanceKey(iso: string, freq: Rebalance): string {
   return freq === 'M' ? iso.slice(0, 7) : isoWeekKey(iso)
+}
+
+/** ISO 星期：週一 = 1 … 週日 = 7。 */
+function isoWeekday(iso: string): number {
+  return ((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7) + 1
+}
+
+/**
+ * 依 `rebalanceDay` 決定每個再平衡期間實際換股的交易日。
+ * 每期取「第一個 day-of-month（月）/ 星期（週）達到門檻的交易日」；
+ * 該期沒有任何交易日達到門檻（月太短、門檻星期遇連假）→ 取該期最後一個交易日。
+ */
+export function rebalanceDates(dates: string[], freq: Rebalance, rebalanceDay = 1): Set<string> {
+  const day = Math.min(28, Math.max(1, Math.round(rebalanceDay || 1)))
+  const groups = new Map<string, string[]>()
+  for (const d of dates) {
+    const k = rebalanceKey(d, freq)
+    const g = groups.get(k)
+    if (g) g.push(d)
+    else groups.set(k, [d])
+  }
+  const out = new Set<string>()
+  for (const g of groups.values()) {
+    g.sort()
+    const reached = g.find((d) =>
+      freq === 'M' ? Number(d.slice(8, 10)) >= day : isoWeekday(d) >= day,
+    )
+    out.add(reached ?? g[g.length - 1]!)
+  }
+  return out
+}
+
+/**
+ * `date` 是否為它所在再平衡期間的換股訊號日 —— 即該期第一個達到 `rebalanceDay` 門檻的交易日。
+ * 與 `rebalanceDates` 不同：不套用「該期都沒達標就取最後一天」的回填（給即時訊號用，
+ * 當期還沒到你的操作日就不算訊號日）。
+ */
+export function isRebalanceDay(
+  dates: string[],
+  date: string,
+  freq: Rebalance,
+  rebalanceDay = 1,
+): boolean {
+  const day = Math.min(28, Math.max(1, Math.round(rebalanceDay || 1)))
+  const key = rebalanceKey(date, freq)
+  const reached = dates
+    .filter((d) => rebalanceKey(d, freq) === key)
+    .sort()
+    .find((d) => (freq === 'M' ? Number(d.slice(8, 10)) >= day : isoWeekday(d) >= day))
+  return reached === date
+}
+
+/**
+ * 從 `fromISO` 之後、下一個再平衡日的近似日曆日期（不含交易日曆，遇週末順延到週一）。
+ * 給「操作訊號 / 提醒信」顯示用。
+ */
+export function nextRebalanceDate(fromISO: string, freq: Rebalance, rebalanceDay = 1): string {
+  const day = Math.min(28, Math.max(1, Math.round(rebalanceDay || 1)))
+  const base = new Date(`${fromISO}T00:00:00Z`)
+  const d = new Date(base)
+  if (freq === 'M') {
+    d.setUTCDate(day)
+    if (d <= base) d.setUTCMonth(d.getUTCMonth() + 1, day)
+  } else {
+    const wd = ((d.getUTCDay() + 6) % 7) + 1
+    d.setUTCDate(d.getUTCDate() + (day - wd))
+    if (d <= base) d.setUTCDate(d.getUTCDate() + 7)
+  }
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
 }
 
 /** 排名後的目標持股（給操作訊號頁用）。 */
@@ -301,7 +376,11 @@ export function runBacktest(
   let eq = 1
   let bench = 1
   let weights = new Map<string, number>()
-  let lastRebalKey = ''
+  const rebalSet = rebalanceDates(
+    rows.map((r) => r.date),
+    cfg.rebalance,
+    cfg.rebalanceDay ?? 1,
+  )
   const turnovers: number[] = []
   let stops = 0
   const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
@@ -389,9 +468,7 @@ export function runBacktest(
     }
 
     // 訊號日 → 排名（用當日資料）；空頭則目標 = 現金
-    const key = rebalanceKey(row.date, cfg.rebalance)
-    if (key !== lastRebalKey) {
-      lastRebalKey = key
+    if (rebalSet.has(row.date)) {
       const bear = regimeMap.get(row.date) === 'bear'
       const target = bear ? new Map<string, number>() : targetWeights(row, cfg)
       pending = { target, applyAt: i + lag, signalDate: row.date }

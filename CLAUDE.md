@@ -23,6 +23,9 @@
 
 資料流：`Actions cron → pipeline 抓 TWSE OpenAPI → 寫 data/ → commit → deploy.yml build web + 併入 data/ → GitHub Pages`。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
+其他 workflow：`notify`（每交易日晚上，`web/scripts/operator-report.ts` 用前端 `buildOperatorReport`
+算訊號 → Gmail SMTP 寄操作提醒信，讀 secret `OPERATOR_PLAN`）、`data-freshness`（`data/` 停擺就開 issue）。
+
 ## 指令
 
 前端（在 `web/`）：
@@ -59,7 +62,9 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
    即時模式（`web/src/lib/overlay.ts`）只覆寫價/漲跌/市值，動能維持收盤。
 4. **因子 key 三處對齊**：`factors.py` 的 `FACTORS`、`schema/snapshot.schema.json`、
    `web/src/lib/metrics.ts` 的 `METRICS`。
-5. **前端 zod schema 與 JSON Schema 對齊**：`web/src/lib/data.contract.test.ts` 會在 drift 時失敗。
+5. **前端 zod schema 與 JSON Schema 對齊**：`web/src/lib/data.contract.test.ts`（snapshot）與
+   `web/src/lib/plan.contract.test.ts`（operator plan）會在 drift 時失敗。
+   操作計畫契約：`schema/operator_plan.schema.json` ↔ `web/src/lib/plan.ts`。
 6. 每個 lib 純函式（`web/src/lib/`、`twse_pipeline/util.py`、`factors.py`）都應有對應測試。
 
 ## 擴充

@@ -9,6 +9,7 @@ export type StrategyParams = Required<
     | 'topN'
     | 'poolTopN'
     | 'rebalance'
+    | 'rebalanceDay'
     | 'weighting'
     | 'execLagDays'
     | 'stopType'
@@ -24,6 +25,7 @@ export const DEFAULT_PARAMS: StrategyParams = {
   topN: 5,
   poolTopN: 50,
   rebalance: 'M',
+  rebalanceDay: 1,
   weighting: 'equal',
   execLagDays: 1,
   stopType: 'none',
@@ -39,6 +41,7 @@ export function encodeParams(p: StrategyParams): string {
     topN: String(p.topN),
     pool: String(p.poolTopN),
     rebal: p.rebalance,
+    rebalDay: String(p.rebalanceDay),
     weight: p.weighting,
     lag: String(p.execLagDays),
     stop: p.stopType,
@@ -60,6 +63,7 @@ export function decodeParams(qs: string): StrategyParams {
     topN: num('topN', DEFAULT_PARAMS.topN),
     poolTopN: num('pool', DEFAULT_PARAMS.poolTopN),
     rebalance: q.get('rebal') === 'W' ? 'W' : 'M',
+    rebalanceDay: Math.min(28, Math.max(1, num('rebalDay', DEFAULT_PARAMS.rebalanceDay))),
     weighting: q.get('weight') === 'mcap' ? 'mcap' : 'equal',
     execLagDays: q.get('lag') === '0' ? 0 : 1,
     stopType:

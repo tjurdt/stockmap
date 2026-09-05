@@ -1,0 +1,67 @@
+name: notify
+
+# 每個交易日晚上寄一封「明天要不要動」的操作提醒信。
+# 需要 secrets：OPERATOR_PLAN（操作計畫 JSON，見網站「操作計畫」頁）、
+#             MAIL_USERNAME（Gmail）、MAIL_PASSWORD（應用程式密碼）、MAIL_TO（收件人）。
+# 缺 OPERATOR_PLAN → 腳本不產出、不寄信。
+
+on:
+  schedule:
+    - cron: '0 11 * * 1-5' # 19:00 TPE，晚於 18:00 的 fetch-twse
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 # 需要 committed data/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web deps
+        working-directory: web
+        run: npm ci
+
+      - name: Build operator report
+        working-directory: web
+        env:
+          OPERATOR_PLAN: ${{ secrets.OPERATOR_PLAN }}
+        run: npm run report
+
+      - name: Check report exists
+        id: check
+        run: |
+          if [ -f web/tmp/email.html ]; then
+            echo "send=true" >> "$GITHUB_OUTPUT"
+            echo "subject=$(head -1 web/tmp/email-subject.txt)" >> "$GITHUB_OUTPUT"
+          else
+            echo "send=false" >> "$GITHUB_OUTPUT"
+            echo "無提醒信可寄（OPERATOR_PLAN 未設或資料不足）。"
+          fi
+
+      - name: Send mail
+        if: steps.check.outputs.send == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: 台股動力提醒 <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_TO }}
+          subject: ${{ steps.check.outputs.subject }}
+          html_body: file://web/tmp/email.html
+          body: file://web/tmp/email.txt
+          convert_markdown: false

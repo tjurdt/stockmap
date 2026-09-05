@@ -1,0 +1,82 @@
+name: data-freshness
+
+# 每日檢查 data/ 是否還在更新；停擺超過門檻就開 issue 提醒。
+# 純讀取 + 開 issue，不碰 data/。
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 11:00 TPE，早上看得到
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Evaluate freshness
+        id: fresh
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import datetime as dt, json, pathlib, sys
+
+          MAX_AGE_DAYS = 4  # 交易日 + 週末 + 一天連假的緩衝
+
+          latest = json.loads(pathlib.Path("data/latest.json").read_text("utf-8"))
+          as_of = dt.date.fromisoformat(latest["asOf"])
+
+          hist_dir = pathlib.Path("data/history")
+          hist_files = sorted(hist_dir.glob("factors-*.jsonl"))
+          last_hist = None
+          if hist_files:
+              lines = [l for l in hist_files[-1].read_text("utf-8").splitlines() if l.strip()]
+              if lines:
+                  last_hist = dt.date.fromisoformat(json.loads(lines[-1])["date"])
+
+          today = dt.date.today()
+          age = (today - as_of).days
+          stale = age > MAX_AGE_DAYS or last_hist is None or (today - last_hist).days > MAX_AGE_DAYS
+
+          print(f"stale={'true' if stale else 'false'}")
+          print(f"asof={as_of.isoformat()}")
+          print(f"hist={last_hist.isoformat() if last_hist else 'MISSING'}")
+          print(f"age={age}")
+          PY
+
+      - name: Open / update issue when stale
+        if: steps.fresh.outputs.stale == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { asof, hist, age } = process.env
+            const title = '⚠️ 資料管線可能停擺'
+            const body = [
+              `\`data/latest.json\` 的 \`asOf\` = **${asof}**（距今約 ${age} 天）。`,
+              `\`data/history/\` 最後一列 = **${hist}**。`,
+              '',
+              '請檢查 [fetch-twse](../../actions/workflows/fetch.yml) 最近的執行紀錄與 `FINMIND_TOKEN` secret。',
+              '_（此 issue 由 data-freshness workflow 自動開立；資料恢復更新後可手動關閉。）_',
+            ].join('\n')
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'data-freshness',
+            })
+            if (open.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: open[0].number, body,
+              })
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['data-freshness'],
+              })
+            }
+        env:
+          asof: ${{ steps.fresh.outputs.asof }}
+          hist: ${{ steps.fresh.outputs.hist }}
+          age: ${{ steps.fresh.outputs.age }}

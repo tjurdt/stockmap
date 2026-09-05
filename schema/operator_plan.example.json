@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "startDate": "2026-09-15",
+  "strategy": {
+    "factor": "m121",
+    "topN": 5,
+    "poolTopN": 50,
+    "rebalance": "M",
+    "rebalanceDay": 5,
+    "weighting": "equal",
+    "execLagDays": 1,
+    "stopType": "trailing",
+    "stopPct": 20,
+    "regime": "ma",
+    "regimeDays": 200,
+    "regimeExit": "rebalance"
+  },
+  "holdings": [
+    { "code": "2330", "shares": 1000, "entryPrice": 2400, "entryDate": "2026-09-15" }
+  ]
+}

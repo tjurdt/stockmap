@@ -124,6 +124,25 @@ export function BacktestPage() {
   const poolShown = Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))
   const stopType = cfg.stopType ?? 'none'
 
+  const paramsQuery = useMemo(
+    () =>
+      encodeParams({
+        factor: cfg.factor,
+        topN: cfg.topN,
+        poolTopN: cfg.poolTopN ?? 50,
+        rebalance: cfg.rebalance,
+        rebalanceDay: cfg.rebalanceDay ?? 1,
+        weighting: cfg.weighting,
+        execLagDays: cfg.execLagDays ?? 1,
+        stopType: cfg.stopType ?? 'none',
+        stopPct: cfg.stopPct ?? 20,
+        regime: cfg.regime ?? 'off',
+        regimeDays: cfg.regimeDays ?? 200,
+        regimeExit: cfg.regimeExit ?? 'rebalance',
+      }),
+    [cfg],
+  )
+
   const series = useMemo(() => {
     type S = { label: string; values: (number | null)[]; color: string; dashed?: boolean }
     if (!result) return [] as S[]
@@ -219,6 +238,34 @@ export function BacktestPage() {
             ]}
             onChange={(v) => patch({ rebalance: v })}
           />
+
+          <label className={styles.field}>
+            換股時點：{cfg.rebalance === 'M' ? `每月 ${cfg.rebalanceDay ?? 1} 號` : '每週'}
+          </label>
+          {cfg.rebalance === 'M' ? (
+            <div className={styles.rangeRow}>
+              <input
+                type="range"
+                min={1}
+                max={28}
+                value={cfg.rebalanceDay ?? 1}
+                onChange={(e) => patch({ rebalanceDay: Number(e.target.value) })}
+              />
+              <span className={styles.sub}>號附近的第一個交易日</span>
+            </div>
+          ) : (
+            <Radio<string>
+              value={String(cfg.rebalanceDay ?? 1)}
+              options={[
+                ['1', '週一'],
+                ['2', '週二'],
+                ['3', '週三'],
+                ['4', '週四'],
+                ['5', '週五'],
+              ]}
+              onChange={(v) => patch({ rebalanceDay: Number(v) })}
+            />
+          )}
 
           <label className={styles.field}>成交時點</label>
           <Radio<string>
@@ -319,26 +366,11 @@ export function BacktestPage() {
           {result && view && (
             <>
               <div className={styles.signalCta}>
-                <button
-                  onClick={() =>
-                    navigate(
-                      `/signal?${encodeParams({
-                        factor: cfg.factor,
-                        topN: cfg.topN,
-                        poolTopN: cfg.poolTopN ?? 50,
-                        rebalance: cfg.rebalance,
-                        weighting: cfg.weighting,
-                        execLagDays: cfg.execLagDays ?? 1,
-                        stopType: cfg.stopType ?? 'none',
-                        stopPct: cfg.stopPct ?? 20,
-                        regime: cfg.regime ?? 'off',
-                        regimeDays: cfg.regimeDays ?? 200,
-                        regimeExit: cfg.regimeExit ?? 'rebalance',
-                      })}`,
-                    )
-                  }
-                >
+                <button onClick={() => navigate(`/signal?${paramsQuery}`)}>
                   📋 用這個策略產生操作訊號 →
+                </button>
+                <button onClick={() => navigate(`/plan?${paramsQuery}`)}>
+                  ＋ 存成操作計畫（每晚寄信提醒）→
                 </button>
               </div>
               <EquityChart
