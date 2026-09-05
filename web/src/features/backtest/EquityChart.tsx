@@ -80,9 +80,9 @@ export function EquityChart({
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label="回測權益曲線"
-        style={{ cursor: onPin ? 'crosshair' : undefined }}
-        onMouseMove={(e) => onCursor(idxFromEvent(e.clientX))}
-        onMouseLeave={() => onCursor(null)}
+        style={{ cursor: onPin ? 'crosshair' : undefined, touchAction: 'pan-y' }}
+        onPointerMove={(e) => onCursor(idxFromEvent(e.clientX))}
+        onPointerLeave={() => onCursor(null)}
         onClick={(e) => onPin?.(idxFromEvent(e.clientX))}
       >
         {/* 空頭區間淺紅底 */}

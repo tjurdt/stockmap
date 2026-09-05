@@ -44,15 +44,15 @@ def main() -> int:
                 f"{plan_example.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})"
             )
 
-    latest = DATA / "latest.json"
-    if latest.exists():
+    for data_name, schema_name in (("latest", "snapshot"), ("calendar", "calendar")):
+        f = DATA / f"{data_name}.json"
+        if not f.exists():
+            continue
         try:
-            jsonschema.validate(_load(latest), _load(SCHEMA / "snapshot.schema.json"))
-            print(f"ok  {latest.relative_to(ROOT)}")
+            jsonschema.validate(_load(f), _load(SCHEMA / f"{schema_name}.schema.json"))
+            print(f"ok  {f.relative_to(ROOT)}")
         except jsonschema.ValidationError as e:
-            errors.append(
-                f"{latest.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})"
-            )
+            errors.append(f"{f.relative_to(ROOT)}: {e.message} (at {list(e.absolute_path)})")
 
     jsonl_specs = [
         (_load(SCHEMA / "history.schema.json"), sorted((DATA / "history").glob("factors-*.jsonl"))),

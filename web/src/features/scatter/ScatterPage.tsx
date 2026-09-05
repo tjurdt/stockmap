@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { Layout } from '../../components/Layout'
 import { useLiveQuotes } from '../../hooks/useLiveQuotes'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { applyLive } from '../../lib/overlay'
 import { Controls } from './Controls'
@@ -25,6 +26,7 @@ export function ScatterPage() {
   const [wantLive, setWantLive] = useState(false)
   const [showN, setShowN] = useState<number | null>(null) // null = 用 snapshot 預設
   const patch = (p: Partial<ScatterOptions>) => setOpts((o) => ({ ...o, ...p }))
+  const isMobile = useMediaQuery('(max-width: 820px)')
 
   const allStocks = state.status === 'ready' ? state.data.stocks : []
   const limit = showN ?? (state.status === 'ready' ? (state.data.universeDisplayCount ?? 20) : 20)
@@ -68,19 +70,24 @@ export function ScatterPage() {
     <Layout asOf={asOf}>
       <div className={styles.layout}>
         <div>
-          <Controls
-            opts={opts}
-            onChange={patch}
-            status={status}
-            live={wantLive}
-            onLiveChange={setWantLive}
-            showN={limit}
-            maxN={allStocks.length}
-            onShowN={setShowN}
-          />
+          <details className={styles.panelWrap} open={!isMobile}>
+            <summary>⚙ 圖表設定</summary>
+            <div className={styles.panel}>
+              <Controls
+                opts={opts}
+                onChange={patch}
+                status={status}
+                live={wantLive}
+                onLiveChange={setWantLive}
+                showN={limit}
+                maxN={allStocks.length}
+                onShowN={setShowN}
+              />
+            </div>
+          </details>
           {stocks.length > 0 && <QuotePanel stocks={stocks} live={isLive} />}
         </div>
-        <div>
+        <div className={styles.main}>
           {stocks.length > 0 ? (
             <>
               <FactorScatter stocks={stocks} opts={opts} />

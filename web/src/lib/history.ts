@@ -45,6 +45,8 @@ export async function loadFactorHistory(year: number): Promise<HistoryRow[]> {
     const res = await fetch(path)
     if (res.status === 404) continue
     if (!res.ok) throw new Error(`HTTP ${res.status} 讀取 factor history ${year}`)
+    // dev server 對缺檔會回 index.html（200）→ 解析失敗就換下一個路徑（demo）
+    if (res.headers.get('content-type')?.includes('text/html')) continue
     return parseHistoryJsonl(await res.text())
   }
   return []

@@ -5,6 +5,7 @@
  * 輸出：一份「今天收盤後、我該知道的一切」結構，交給各處各自渲染。
  */
 import type { BaselineRow } from '../../lib/baselines'
+import { nextTradingDay } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import type { OperatorPlan } from '../../lib/plan'
@@ -71,7 +72,11 @@ export interface OperatorReport {
   regimeChangedFrom: 'bull' | 'bear' | null
   /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股 */
   isSignalDay: boolean
+  /** asOfDate 之後的下一個台股交易日 */
+  nextTradingDay: string
   nextRebalanceDate: string
+  /** 目前空頭且策略設定「空頭買台灣50反1」 */
+  bearInverse: boolean
   targets: TargetRow[]
   holdings: HoldingRow[]
   /** 換股日 = 真的要做；非換股日 = 「下次換股日的預覽」 */
@@ -88,7 +93,7 @@ function strategySummary(plan: OperatorPlan, factorLabel: string): string {
     `${factorLabel} 高者佳`,
     `市值前 ${s.poolTopN} 選前 ${s.topN} 檔`,
     s.rebalance === 'M'
-      ? `每月 ${s.rebalanceDay} 號附近再平衡`
+      ? `每月第 ${s.rebalanceDay} 個交易日再平衡`
       : `每週星期 ${s.rebalanceDay} 再平衡`,
     s.weighting === 'mcap' ? '市值權重' : '等權',
   ]
@@ -99,7 +104,7 @@ function strategySummary(plan: OperatorPlan, factorLabel: string): string {
     parts.push(
       `多空過濾（${s.regime === 'ma' ? '均線' : '動能'} ${s.regimeDays} 日，${
         s.regimeExit === 'immediate' ? '轉空立刻清空' : '換股日才空手'
-      }）`,
+      }，空頭${s.bearHolding === 'inverse' ? '買台灣50反1' : '抱現金'}）`,
     )
   }
   return parts.join(' · ')
@@ -114,6 +119,7 @@ export function buildOperatorReport(
   baselines: BaselineRow[],
   plan: OperatorPlan,
   names: Map<string, string>,
+  holidays: Set<string> = new Set(),
   priceOf: (code: string) => number | null = () => null,
 ): OperatorReport | null {
   const rows = [...history].sort((a, b) => a.date.localeCompare(b.date))
@@ -230,6 +236,8 @@ export function buildOperatorReport(
     .filter((h) => h.stop?.hit)
     .map((h) => ({ code: h.code, name: h.name, dropPct: h.stop!.pct }))
 
+  const bearInverse = regime === 'bear' && plan.strategy.bearHolding === 'inverse'
+
   return {
     asOfDate: lastRow.date,
     started: lastRow.date >= plan.startDate,
@@ -239,7 +247,14 @@ export function buildOperatorReport(
     regime,
     regimeChangedFrom,
     isSignalDay,
-    nextRebalanceDate: nextRebalanceDate(lastRow.date, cfg.rebalance, cfg.rebalanceDay ?? 1),
+    nextTradingDay: nextTradingDay(lastRow.date, holidays),
+    nextRebalanceDate: nextRebalanceDate(
+      lastRow.date,
+      cfg.rebalance,
+      cfg.rebalanceDay ?? 1,
+      holidays,
+    ),
+    bearInverse,
     targets,
     holdings,
     actions,

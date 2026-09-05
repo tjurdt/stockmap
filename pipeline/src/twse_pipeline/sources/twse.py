@@ -6,6 +6,7 @@
   TWT49U        — 除權除息計算結果表（用來算還原因子）
   t187ap03_L    — 全上市公司基本資料（已發行股數、公司簡稱；用於動態排名）
   MI_INDEX      — 指定歷史日期的全市場收盤（www.twse.com.tw，用於 point-in-time 市值排名）
+  holidaySchedule — 當年度證券市場開休市日曆
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ EP_DAY = f"{BASE}/exchangeReport/STOCK_DAY_ALL"
 EP_VALUATION = f"{BASE}/exchangeReport/BWIBBU_ALL"
 EP_EXRIGHT = f"{BASE}/exchangeReport/TWT49U"
 EP_COMPANY = f"{BASE}/opendata/t187ap03_L"
+EP_HOLIDAYS = f"{BASE}/holidaySchedule/holidaySchedule"
 EP_MI_INDEX = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
 
 _UA = "Mozilla/5.0 (stockmap-pipeline +https://github.com/tjurdt/stockmap)"
@@ -49,6 +51,11 @@ def fetch_exright() -> list[Row]:
 
 def fetch_company_info() -> list[Row]:
     return _get(EP_COMPANY)
+
+
+def fetch_holiday_schedule() -> list[Row]:
+    """當年度開休市日曆。每列 {Name, Date（民國 YYYMMDD）, Weekday, Description}。"""
+    return _get(EP_HOLIDAYS)
 
 
 def fetch_market_close(yyyymmdd: str) -> dict[str, float]:

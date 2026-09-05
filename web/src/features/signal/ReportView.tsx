@@ -29,6 +29,9 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
 
       <div className={report.regime === 'bear' ? styles.bearBox : styles.bullBox}>
         <p>
+          下一個台股交易日：<b>{report.nextTradingDay}</b>
+        </p>
+        <p>
           大盤環境：<b>{report.regime === 'bear' ? '空頭' : '多頭'}</b>
           {report.regimeChangedFrom && (
             <>
@@ -36,10 +39,12 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
               —— <b>今天由{report.regimeChangedFrom === 'bull' ? '多轉空' : '空轉多'}</b>
             </>
           )}
+          {report.bearInverse && <>　空頭策略：手上放元大台灣50反1（00632R）</>}
         </p>
         {report.isSignalDay ? (
           <p>
-            <b>{report.asOfDate} 是換股訊號日</b> → 下一個交易日照下方「本次換股動作」操作。
+            <b>{report.asOfDate} 是換股訊號日</b> → 下一個交易日（{report.nextTradingDay}
+            ）照下方「本次換股動作」操作。
           </p>
         ) : (
           <p>

@@ -2,13 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tjurdt/stockmap/schema/baselines.schema.json",
   "title": "StockMap baseline row",
-  "description": "data/baselines.jsonl 的單列。twiiTR = 加權報酬指數點位；e0050 = 0050 還原收盤。",
+  "description": "data/baselines.jsonl 的單列。twiiTR = 加權報酬指數點位；e0050 = 0050 還原收盤；e00632r = 台灣50反1 收盤。",
   "type": "object",
   "additionalProperties": false,
   "required": ["date"],
   "properties": {
     "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
     "twiiTR": { "type": "number", "exclusiveMinimum": 0 },
-    "e0050": { "type": "number", "exclusiveMinimum": 0 }
+    "e0050": { "type": "number", "exclusiveMinimum": 0 },
+    "e00632r": { "type": "number", "exclusiveMinimum": 0 }
   }
 }

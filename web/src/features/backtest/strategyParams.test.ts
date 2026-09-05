@@ -17,6 +17,7 @@ describe('strategyParams', () => {
       regime: 'ma' as const,
       regimeDays: 120,
       regimeExit: 'immediate' as const,
+      bearHolding: 'inverse' as const,
     }
     expect(decodeParams(encodeParams(p))).toEqual(p)
   })
@@ -30,7 +31,7 @@ describe('strategyParams', () => {
     const d = decodeParams('?topN=-1&rebal=X&stop=weird&regime=nope&rebalDay=99')
     expect(d.topN).toBe(DEFAULT_PARAMS.topN)
     expect(d.rebalance).toBe('M')
-    expect(d.rebalanceDay).toBe(28) // clamp 到 1–28
+    expect(d.rebalanceDay).toBe(23) // clamp 到 1–23
     expect(d.stopType).toBe('none')
     expect(d.regime).toBe('off')
   })

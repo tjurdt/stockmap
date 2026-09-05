@@ -18,7 +18,7 @@ export const strategySchema = z.object({
   topN: z.number().int().positive(),
   poolTopN: z.number().int().positive(),
   rebalance: z.enum(['W', 'M']),
-  rebalanceDay: z.number().int().min(1).max(28),
+  rebalanceDay: z.number().int().min(1).max(23),
   weighting: z.enum(['equal', 'mcap']),
   execLagDays: z.number().int().min(0).max(1),
   stopType: z.enum(['none', 'fixed', 'trailing']),
@@ -26,6 +26,7 @@ export const strategySchema = z.object({
   regime: z.enum(['off', 'ma', 'mom']),
   regimeDays: z.number().int().positive(),
   regimeExit: z.enum(['rebalance', 'immediate']),
+  bearHolding: z.enum(['cash', 'inverse']),
 })
 
 export const positionSchema = z.object({

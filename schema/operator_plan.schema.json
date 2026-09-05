@@ -26,7 +26,7 @@
       "additionalProperties": false,
       "required": [
         "factor", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
-        "execLagDays", "stopType", "stopPct", "regime", "regimeDays", "regimeExit"
+        "execLagDays", "stopType", "stopPct", "regime", "regimeDays", "regimeExit", "bearHolding"
       ],
       "properties": {
         "factor": {
@@ -39,8 +39,8 @@
         "rebalanceDay": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 28,
-          "description": "換股時點：M→每月第幾日；W→每週星期幾 (1=一 … 5=五)"
+          "maximum": 23,
+          "description": "換股時點：M→每月第 N 個交易日；W→每週星期幾 (1=一 … 5=五)"
         },
         "weighting": { "enum": ["equal", "mcap"], "description": "等權 / 市值權重" },
         "execLagDays": { "enum": [0, 1], "description": "訊號日到成交隔幾個交易日" },
@@ -51,6 +51,10 @@
         "regimeExit": {
           "enum": ["rebalance", "immediate"],
           "description": "轉空反應：撐到換股日 / 立刻清空"
+        },
+        "bearHolding": {
+          "enum": ["cash", "inverse"],
+          "description": "空頭時手上放：現金 / 元大台灣50反1 (00632R)"
         }
       }
     },

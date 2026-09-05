@@ -5,6 +5,7 @@ import { Layout } from '../../components/Layout'
 import { useAsync } from '../../hooks/useAsync'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { loadBaselines } from '../../lib/baselines'
+import { loadCalendar, tradingDayOrdinal } from '../../lib/calendar'
 import { loadAllFactorHistory } from '../../lib/history'
 import { toPlanJson, useOperatorPlan } from '../../lib/plan'
 import { decodeParams, encodeParams } from '../backtest/strategyParams'
@@ -29,8 +30,11 @@ export function PlannerPage() {
 
   const hist = useAsync(loadAllFactorHistory, [])
   const bl = useAsync(loadBaselines, [])
+  const cal = useAsync(loadCalendar, [])
   const snap = useSnapshot()
   const [copied, setCopied] = useState(false)
+
+  const holidays = cal.status === 'ready' && cal.data ? cal.data.holidays : new Set<string>()
 
   const names = useMemo(() => {
     const m = new Map<string, string>()
@@ -44,8 +48,8 @@ export function PlannerPage() {
 
   const report = useMemo(() => {
     if (hist.status !== 'ready' || bl.status !== 'ready') return null
-    return buildOperatorReport(hist.data, bl.data, toPlanJson(plan), names)
-  }, [hist, bl, plan, names])
+    return buildOperatorReport(hist.data, bl.data, toPlanJson(plan), names, holidays)
+  }, [hist, bl, plan, names, holidays])
 
   const copy = () => {
     navigator.clipboard.writeText(planJson).then(
@@ -64,6 +68,12 @@ export function PlannerPage() {
       <div className={styles.grid}>
         <div className={styles.panel}>
           <h3>設定</h3>
+
+          {report && (
+            <p className={styles.nextDay}>
+              下一個台股交易日：<b>{report.nextTradingDay}</b>
+            </p>
+          )}
 
           <label className={styles.field}>策略上線日</label>
           <input
@@ -86,29 +96,48 @@ export function PlannerPage() {
             ))}
           </div>
 
-          <label className={styles.field}>
-            {s.rebalance === 'M' ? `每月第 ${s.rebalanceDay} 個交易日附近換股` : '每週星期幾換股'}
-          </label>
           {s.rebalance === 'M' ? (
-            <input
-              type="range"
-              min={1}
-              max={28}
-              value={s.rebalanceDay}
-              onChange={(e) => patchStrategy({ rebalanceDay: Number(e.target.value) })}
-            />
-          ) : (
-            <div className={styles.radios}>
-              {WEEKDAYS.map(([v, label]) => (
+            <>
+              <label className={styles.field}>每月第 {s.rebalanceDay} 個交易日換股</label>
+              <div className={styles.radios}>
                 <button
-                  key={v}
-                  data-on={String(s.rebalanceDay) === v}
-                  onClick={() => patchStrategy({ rebalanceDay: Number(v) })}
+                  data-on={s.rebalanceDay === 1}
+                  onClick={() => patchStrategy({ rebalanceDay: 1 })}
                 >
-                  {label}
+                  每月第一個交易日
                 </button>
-              ))}
-            </div>
+                <button
+                  data-on={s.rebalanceDay === tradingDayOrdinal(plan.startDate, holidays)}
+                  onClick={() =>
+                    patchStrategy({ rebalanceDay: tradingDayOrdinal(plan.startDate, holidays) })
+                  }
+                >
+                  跟上線日同順位（第 {tradingDayOrdinal(plan.startDate, holidays)}）
+                </button>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={23}
+                value={s.rebalanceDay}
+                onChange={(e) => patchStrategy({ rebalanceDay: Number(e.target.value) })}
+              />
+            </>
+          ) : (
+            <>
+              <label className={styles.field}>每週星期幾換股</label>
+              <div className={styles.radios}>
+                {WEEKDAYS.map(([v, label]) => (
+                  <button
+                    key={v}
+                    data-on={String(s.rebalanceDay) === v}
+                    onClick={() => patchStrategy({ rebalanceDay: Number(v) })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           <label className={styles.field}>策略參數</label>

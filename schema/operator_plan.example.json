@@ -13,7 +13,8 @@
     "stopPct": 20,
     "regime": "ma",
     "regimeDays": 200,
-    "regimeExit": "rebalance"
+    "regimeExit": "rebalance",
+    "bearHolding": "cash"
   },
   "holdings": [
     { "code": "2330", "shares": 1000, "entryPrice": 2400, "entryDate": "2026-09-15" }
