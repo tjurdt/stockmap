@@ -39,6 +39,17 @@ function loadHistory(): HistoryRow[] {
   return rows.sort((a, b) => a.date.localeCompare(b.date))
 }
 
+function loadHolidays(): Set<string> {
+  try {
+    const cal = JSON.parse(readFileSync(join(DATA, 'calendar.json'), 'utf-8')) as {
+      holidays: string[]
+    }
+    return new Set(cal.holidays)
+  } catch {
+    return new Set()
+  }
+}
+
 function loadNames(): Map<string, string> {
   const m = new Map<string, string>()
   try {
@@ -87,15 +98,17 @@ function textOf(r: OperatorReport): string {
   L.push(`策略：${r.strategySummary}`)
   L.push('')
   if (!r.started) L.push(`※ 策略尚未上線（上線日 ${r.startDate}）。下方為上線當天要買的清單。`)
+  L.push(`下一個台股交易日：${r.nextTradingDay}`)
   L.push(
     `大盤：${r.regime === 'bear' ? '空頭' : '多頭'}` +
       (r.regimeChangedFrom
         ? `（今天由${r.regimeChangedFrom === 'bull' ? '多轉空' : '空轉多'}）`
-        : ''),
+        : '') +
+      (r.bearInverse ? ' —— 空頭策略：手上放元大台灣50反1（00632R）' : ''),
   )
   L.push(
     r.isSignalDay
-      ? `${r.asOfDate} 是換股訊號日 → 下一交易日照下列動作換股。`
+      ? `${r.asOfDate} 是換股訊號日 → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
       : `今天不是換股日；下次換股約 ${r.nextRebalanceDate}。在那之前抱著不動、只看停損。`,
   )
   L.push('')
@@ -159,6 +172,10 @@ function htmlOf(r: OperatorReport): string {
     )
   }
 
+  p.push(
+    `<p style="color:#666;font-size:12.5px;margin:2px 0 0">下一個台股交易日：<b>${r.nextTradingDay}</b></p>`,
+  )
+
   const regimeTxt =
     `大盤環境：<b>${r.regime === 'bear' ? '空頭' : '多頭'}</b>` +
     (r.regimeChangedFrom
@@ -166,9 +183,10 @@ function htmlOf(r: OperatorReport): string {
           r.regimeChangedFrom === 'bull' ? '多轉空' : '空轉多'
         }</b>`
       : '') +
+    (r.bearInverse ? '<br>空頭策略：手上放元大台灣50反1（00632R）' : '') +
     '<br>' +
     (r.isSignalDay
-      ? `<b>${r.asOfDate} 是換股訊號日</b> → 下一交易日照「本次換股動作」操作。`
+      ? `<b>${r.asOfDate} 是換股訊號日</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
       : `今天不是換股日；下次換股約 <b>${r.nextRebalanceDate}</b>。在那之前抱著不動、只看停損。`)
   p.push(box(r.regime === 'bear' ? '#fdecea' : '#eef7f0', regimeTxt))
 
@@ -285,8 +303,9 @@ function main(): void {
   }
 
   const history = loadHistory()
+  const holidays = loadHolidays()
   const baselines = parseJsonl<BaselineRow>(join(DATA, 'baselines.jsonl'))
-  const report = buildOperatorReport(history, baselines, parsed.data, loadNames())
+  const report = buildOperatorReport(history, baselines, parsed.data, loadNames(), holidays)
   if (!report) {
     console.log('因子歷史不足 → 不產生提醒信。')
     return

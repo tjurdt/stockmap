@@ -7,6 +7,7 @@
  * 資料量小（~數年 × 20 檔），跑在主執行緒 <10ms；若日後歷史拉長到十幾年再考慮搬 web worker。
  */
 import type { BaselineRow } from '../../lib/baselines'
+import { isTradingDay, nextTradingDay, nthTradingDayOfMonth } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
 import { METRICS, type MetricKey } from '../../lib/metrics'
 
@@ -58,6 +59,11 @@ export interface BacktestConfig {
    * immediate：一轉空頭當天就清空全部持股、抱現金，直到再平衡日且轉多才重新進場。
    */
   regimeExit?: 'rebalance' | 'immediate'
+  /**
+   * 空頭期間手上放什麼。cash（預設）= 現金 0 報酬；inverse = 元大台灣50反1（00632R），
+   * 需 `baselines` 有 `e00632r`（2014-10 才成立，更早的空頭仍當現金）。
+   */
+  bearHolding?: 'cash' | 'inverse'
   /** 起始 / 結束日 YYYY-MM-DD；省略 = 資料全範圍 */
   startDate?: string
   endDate?: string
@@ -77,6 +83,8 @@ export interface BacktestMetrics {
   stops: number
   /** 空頭天數佔比（regime = off 時為 0） */
   bearShare: number
+  /** 持有台灣50反1的天數佔比（bearHolding != inverse 時為 0） */
+  inverseShare: number
   tradingDays: number
   years: number
 }
@@ -129,11 +137,11 @@ function isoWeekday(iso: string): number {
 
 /**
  * 依 `rebalanceDay` 決定每個再平衡期間實際換股的交易日。
- * 每期取「第一個 day-of-month（月）/ 星期（週）達到門檻的交易日」；
- * 該期沒有任何交易日達到門檻（月太短、門檻星期遇連假）→ 取該期最後一個交易日。
+ * `M`：每月第 N 個交易日（該月交易日不足 N 個 → 取最後一個）。
+ * `W`：該週第一個星期 >= N 的交易日（都沒有 → 取該週最後一個交易日）。
  */
 export function rebalanceDates(dates: string[], freq: Rebalance, rebalanceDay = 1): Set<string> {
-  const day = Math.min(28, Math.max(1, Math.round(rebalanceDay || 1)))
+  const n = Math.max(1, Math.round(rebalanceDay || 1))
   const groups = new Map<string, string[]>()
   for (const d of dates) {
     const k = rebalanceKey(d, freq)
@@ -144,18 +152,19 @@ export function rebalanceDates(dates: string[], freq: Rebalance, rebalanceDay = 
   const out = new Set<string>()
   for (const g of groups.values()) {
     g.sort()
-    const reached = g.find((d) =>
-      freq === 'M' ? Number(d.slice(8, 10)) >= day : isoWeekday(d) >= day,
-    )
-    out.add(reached ?? g[g.length - 1]!)
+    if (freq === 'M') {
+      out.add(g[Math.min(n, g.length) - 1]!)
+    } else {
+      out.add(g.find((d) => isoWeekday(d) >= n) ?? g[g.length - 1]!)
+    }
   }
   return out
 }
 
 /**
- * `date` 是否為它所在再平衡期間的換股訊號日 —— 即該期第一個達到 `rebalanceDay` 門檻的交易日。
- * 與 `rebalanceDates` 不同：不套用「該期都沒達標就取最後一天」的回填（給即時訊號用，
- * 當期還沒到你的操作日就不算訊號日）。
+ * `date` 是否為它所在再平衡期間的換股訊號日。
+ * 與 `rebalanceDates` 不同：不套用「該期沒到 N 就取最後一天」的回填（給即時訊號用 ——
+ * 當期交易日還不足 N 個，就還沒到你的操作日）。
  */
 export function isRebalanceDay(
   dates: string[],
@@ -163,33 +172,46 @@ export function isRebalanceDay(
   freq: Rebalance,
   rebalanceDay = 1,
 ): boolean {
-  const day = Math.min(28, Math.max(1, Math.round(rebalanceDay || 1)))
+  const n = Math.max(1, Math.round(rebalanceDay || 1))
   const key = rebalanceKey(date, freq)
-  const reached = dates
-    .filter((d) => rebalanceKey(d, freq) === key)
-    .sort()
-    .find((d) => (freq === 'M' ? Number(d.slice(8, 10)) >= day : isoWeekday(d) >= day))
-  return reached === date
+  const group = dates.filter((d) => rebalanceKey(d, freq) === key).sort()
+  if (freq === 'M') return group[n - 1] === date
+  return group.find((d) => isoWeekday(d) >= n) === date
 }
 
 /**
- * 從 `fromISO` 之後、下一個再平衡日的近似日曆日期（不含交易日曆，遇週末順延到週一）。
- * 給「操作訊號 / 提醒信」顯示用。
+ * 從 `fromISO` 之後、下一個再平衡日的日期（給「操作訊號 / 提醒信」顯示）。
+ * 傳 `holidays` 就用真的台股交易日曆；否則只跳週末。
  */
-export function nextRebalanceDate(fromISO: string, freq: Rebalance, rebalanceDay = 1): string {
-  const day = Math.min(28, Math.max(1, Math.round(rebalanceDay || 1)))
+export function nextRebalanceDate(
+  fromISO: string,
+  freq: Rebalance,
+  rebalanceDay = 1,
+  holidays: Set<string> = new Set(),
+): string {
+  const n = Math.max(1, Math.round(rebalanceDay || 1))
   const base = new Date(`${fromISO}T00:00:00Z`)
-  const d = new Date(base)
+
   if (freq === 'M') {
-    d.setUTCDate(day)
-    if (d <= base) d.setUTCMonth(d.getUTCMonth() + 1, day)
-  } else {
-    const wd = ((d.getUTCDay() + 6) % 7) + 1
-    d.setUTCDate(d.getUTCDate() + (day - wd))
-    if (d <= base) d.setUTCDate(d.getUTCDate() + 7)
+    let y = base.getUTCFullYear()
+    let m = base.getUTCMonth() + 1
+    let cand = nthTradingDayOfMonth(y, m, n, holidays)
+    if (cand <= fromISO) {
+      if (++m > 12) {
+        m = 1
+        y++
+      }
+      cand = nthTradingDayOfMonth(y, m, n, holidays)
+    }
+    return cand
   }
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1)
-  return d.toISOString().slice(0, 10)
+
+  const d = new Date(base)
+  const wd = ((d.getUTCDay() + 6) % 7) + 1
+  d.setUTCDate(d.getUTCDate() + (n - wd))
+  if (d <= base) d.setUTCDate(d.getUTCDate() + 7)
+  const s = d.toISOString().slice(0, 10)
+  return isTradingDay(s, holidays) ? s : nextTradingDay(s, holidays)
 }
 
 /** 排名後的目標持股（給操作訊號頁用）。 */
@@ -293,6 +315,23 @@ function adjMap(row: HistoryRow): Map<string, number> {
   return m
 }
 
+/** 元大台灣50反1 —— 空頭避險部位的合成代號。 */
+export const INVERSE_CODE = '00632R'
+
+/** baselines 的 e00632r → {date: 相對前一交易日的還原報酬率}。 */
+function inverseReturns(baselines: BaselineRow[]): Map<string, number> {
+  const rows = baselines
+    .filter((b) => b.e00632r != null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const out = new Map<string, number>()
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1]!.e00632r!
+    const cur = rows[i]!.e00632r!
+    if (prev > 0 && cur > 0) out.set(rows[i]!.date, cur / prev - 1)
+  }
+  return out
+}
+
 function portfolioReturn(weights: Map<string, number>, rets: Map<string, number>): number {
   let r = 0
   for (const [code, w] of weights) r += w * (rets.get(code) ?? 0)
@@ -387,6 +426,12 @@ export function runBacktest(
   const stopType = cfg.stopType ?? 'none'
   const stopFrac = (cfg.stopPct ?? 0) / 100
   const immediateExit = (cfg.regime ?? 'off') !== 'off' && cfg.regimeExit === 'immediate'
+  const bearInverse = (cfg.regime ?? 'off') !== 'off' && cfg.bearHolding === 'inverse'
+  const invRet = bearInverse ? inverseReturns(baselines) : new Map<string, number>()
+  /** 空頭那天手上要放什麼：反 1（有資料）或現金。 */
+  const bearTarget = (d: string): Map<string, number> =>
+    bearInverse && invRet.has(d) ? new Map([[INVERSE_CODE, 1]]) : new Map<string, number>()
+  let inverseDays = 0
   let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
   // 每檔進場後的參考 adjClose（買進日）與波段高點
   const entry = new Map<string, { in: number; peak: number }>()
@@ -418,6 +463,8 @@ export function runBacktest(
 
     if (i > 0) {
       const rets = dailyReturns(rows[i - 1]!, row)
+      const ir = invRet.get(row.date)
+      if (ir != null) rets.set(INVERSE_CODE, ir)
       const r = portfolioReturn(weights, rets)
       eq *= 1 + r
       weights = drift(weights, rets, r)
@@ -433,7 +480,7 @@ export function runBacktest(
       // 停損檢查（用當日 adjClose）
       if (stopType !== 'none' && stopFrac > 0) {
         for (const [c, w] of weights) {
-          if (w <= 0) continue
+          if (w <= 0 || c === INVERSE_CODE) continue // 避險部位不停損
           const e = entry.get(c)
           const px = adj.get(c)
           if (!e || px == null) continue
@@ -448,15 +495,26 @@ export function runBacktest(
         }
       }
 
-      // immediate：一轉空頭當天清空全部持股
-      if (immediateExit && regimeMap.get(row.date) === 'bear' && weights.size > 0) {
-        let held = 0
-        for (const w of weights.values()) held += w
-        if (held > 0) {
-          eq *= 1 - cost1 * held
+      // immediate：一轉空頭當天清掉股票部位（→ 現金或反 1）
+      if (immediateExit && regimeMap.get(row.date) === 'bear') {
+        let stockW = 0
+        for (const [c, w] of weights) if (c !== INVERSE_CODE) stockW += w
+        const inInverse = (weights.get(INVERSE_CODE) ?? 0) > 1e-9
+        const wantInverse = bearInverse && invRet.has(row.date)
+        if (stockW > 1e-9) {
+          eq *= 1 - cost1 * stockW
           weights = new Map()
           entry.clear()
           if (pending && pending.target.size > 0) pending = null // 取消尚未成交的進場
+        }
+        if (wantInverse && !inInverse && weights.size === 0) {
+          eq *= 1 - cost1 // 買進反 1 成本
+          weights = new Map([[INVERSE_CODE, 1]])
+          entry.set(INVERSE_CODE, { in: 0, peak: 0 })
+        } else if (!wantInverse && inInverse) {
+          eq *= 1 - cost1 // 反 1 → 現金
+          weights = new Map()
+          entry.delete(INVERSE_CODE)
         }
       }
     }
@@ -467,16 +525,18 @@ export function runBacktest(
       pending = null
     }
 
-    // 訊號日 → 排名（用當日資料）；空頭則目標 = 現金
+    // 訊號日 → 排名（用當日資料）；空頭則目標 = 現金 / 反 1
     if (rebalSet.has(row.date)) {
       const bear = regimeMap.get(row.date) === 'bear'
-      const target = bear ? new Map<string, number>() : targetWeights(row, cfg)
+      const target = bear ? bearTarget(row.date) : targetWeights(row, cfg)
       pending = { target, applyAt: i + lag, signalDate: row.date }
       if (lag === 0) {
         applyRebalance(target, row.date, row.date, adj)
         pending = null
       }
     }
+
+    if ((weights.get(INVERSE_CODE) ?? 0) > 1e-9) inverseDays++
 
     dates.push(row.date)
     equity.push(eq)
@@ -524,6 +584,7 @@ export function runBacktest(
       rebalances: turnovers.length,
       stops,
       bearShare: regime.length ? regime.filter((r) => r === 'bear').length / regime.length : 0,
+      inverseShare: dates.length ? inverseDays / dates.length : 0,
       tradingDays: dates.length,
       years,
     },

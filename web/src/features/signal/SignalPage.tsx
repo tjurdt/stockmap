@@ -6,6 +6,7 @@ import { useAsync } from '../../hooks/useAsync'
 import { useLiveQuotes } from '../../hooks/useLiveQuotes'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { loadBaselines } from '../../lib/baselines'
+import { loadCalendar } from '../../lib/calendar'
 import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import { useHoldings, type Position } from '../../lib/portfolio'
@@ -23,8 +24,11 @@ export function SignalPage() {
   const p = decodeParams(search)
   const hist = useAsync(loadAllFactorHistory, [])
   const bl = useAsync(loadBaselines, [])
+  const cal = useAsync(loadCalendar, [])
   const snap = useSnapshot()
   const [holdings, setHoldings] = useHoldings()
+
+  const holidays = cal.status === 'ready' && cal.data ? cal.data.holidays : new Set<string>()
 
   const names = useMemo(() => {
     const m = new Map<string, string>()
@@ -58,9 +62,9 @@ export function SignalPage() {
       }
       return mx
     }
-    const nextRebal = nextRebalanceDate(lastRow.date, p.rebalance, p.rebalanceDay)
+    const nextRebal = nextRebalanceDate(lastRow.date, p.rebalance, p.rebalanceDay, holidays)
     return { regime, targets, isRebalDay, peakSince, lastDate: lastRow.date, nextRebal }
-  }, [lastRow, prevRow, rows, bl, p])
+  }, [lastRow, prevRow, rows, bl, p, holidays])
 
   const codes = useMemo(
     () => [
@@ -110,7 +114,7 @@ export function SignalPage() {
         {p.regime !== 'off' &&
           ` · 多空過濾（${p.regime === 'ma' ? '均線' : '動能'} ${p.regimeDays} 日，${
             p.regimeExit === 'immediate' ? '轉空立刻清空' : '換股日才空手'
-          }）`}
+          }，空頭${p.bearHolding === 'inverse' ? '買台灣50反1' : '抱現金'}）`}
         <Link to={`/backtest${search}`} className={styles.back}>
           ← 回回測調整
         </Link>
@@ -120,11 +124,13 @@ export function SignalPage() {
         <p>
           大盤環境：<b>{model.regime === 'bear' ? '空頭' : '多頭'}</b>
           {model.regime === 'bear' &&
-            (p.regimeExit === 'immediate'
-              ? holdings.length > 0
-                ? ' —— 依策略「轉空立刻清空」，現在就把持股全部賣掉、抱現金，直到換股日轉多才進場。'
-                : ' —— 空手中，等換股日轉多才進場。'
-              : ' —— 策略建議這輪空手（抱著現有持股到換股日再依規則處理）。')}
+            (p.bearHolding === 'inverse'
+              ? ' —— 空頭策略：把持股換成元大台灣50反1（00632R），轉多再換回。'
+              : p.regimeExit === 'immediate'
+                ? holdings.length > 0
+                  ? ' —— 依策略「轉空立刻清空」，現在就把持股全部賣掉、抱現金，直到換股日轉多才進場。'
+                  : ' —— 空手中，等換股日轉多才進場。'
+                : ' —— 策略建議這輪空手（抱著現有持股到換股日再依規則處理）。')}
         </p>
         {model.regime === 'bear' && p.regimeExit === 'immediate' ? (
           <p>
@@ -136,9 +142,11 @@ export function SignalPage() {
           </p>
         ) : (
           <p>
-            <b>今天不是換股日。</b>下次換股：{p.rebalance === 'M' ? '每月' : '每週'}第{' '}
-            {p.rebalanceDay} {p.rebalance === 'M' ? '日' : '天'}附近（約 <b>{model.nextRebal}</b>
-            ）。在那之前：
+            <b>今天不是換股日。</b>下次換股：
+            {p.rebalance === 'M'
+              ? `每月第 ${p.rebalanceDay} 個交易日`
+              : `每週星期 ${p.rebalanceDay}`}
+            （約 <b>{model.nextRebal}</b>）。在那之前：
             <br />• 已在跑這個策略 → <b>抱著上次換股買的不動</b>，只有跌破停損才賣。
             <br />• 還沒開始跑 → 可以現在照下方「目標持股」進場，之後每逢換股日再平衡。
             <br />※ 下方「目標持股」是「假如今天就是換股日」的排名，到 {model.nextRebal}{' '}

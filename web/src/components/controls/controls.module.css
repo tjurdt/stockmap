@@ -1,0 +1,124 @@
+.row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  margin-top: 6px;
+  min-height: 34px;
+  overflow: hidden;
+}
+.label {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── CycleField ── */
+.cycle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.cycle .value {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 6px 2px;
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arrow {
+  flex: 0 0 26px;
+  border: none;
+  border-left: 1px solid var(--hair);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.arrow:first-child {
+  border-left: none;
+  border-right: 1px solid var(--hair);
+}
+.arrow:hover {
+  background: #eef3f8;
+  color: var(--ink);
+}
+
+/* ── StepperField ── */
+.stepper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.stepBtn {
+  flex: 0 0 30px;
+  border: none;
+  border-left: 1px solid var(--hair);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.stepBtn:first-child {
+  border-left: none;
+  border-right: 1px solid var(--hair);
+}
+.stepBtn:hover {
+  background: #eef3f8;
+}
+.stepBtn:disabled {
+  color: var(--hair);
+  cursor: default;
+}
+.stepVal {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* ── Section ── */
+.section {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  margin-bottom: 8px;
+}
+.section > summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  user-select: none;
+  list-style: none;
+}
+.section > summary::-webkit-details-marker {
+  display: none;
+}
+.section > summary::before {
+  content: '▸ ';
+  color: var(--muted);
+}
+.section[open] > summary::before {
+  content: '▾ ';
+}
+.section[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.body {
+  padding: 4px 12px 12px;
+}

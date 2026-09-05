@@ -42,6 +42,8 @@
 | `schema/universe.json` | 人工維護 | `twse_pipeline.config` | 成分股 + 在外流通股數 |
 | `data/prices.json` | `twse_pipeline.prices` | 只有管線自己（算動能） | 內部格式，前端不讀 |
 | `OPERATOR_PLAN` (secret) | 網站「操作計畫」頁 | `notify` workflow（`web/scripts/operator-report.ts`） | `schema/operator_plan.schema.json` ↔ `web/src/lib/plan.ts` (zod) |
+| `data/baselines.jsonl` | `twse_pipeline.baselines` | 回測圖表 / regime / 空頭反 1 | `schema/baselines.schema.json` ↔ `web/src/lib/baselines.ts`（twiiTR / e0050 / e00632r）|
+| `data/calendar.json` | `twse_pipeline.calendar`（TWSE holidaySchedule）| 換股時點、下一個交易日 | `schema/calendar.schema.json` ↔ `web/src/lib/calendar.ts` |
 
 改契約的規則：**加欄位**往後相容，schema 與 zod 兩邊都加即可。**改/刪欄位**是破壞性變更，
 必須 bump `schemaVersion`，並在前端處理舊版本（或接受舊部署短暫壞掉）。
@@ -82,8 +84,16 @@
 `web/src/features/backtest/engine.ts` —— 純函式：每個再平衡日 (1) 依**當日** point-in-time 市值取前
 `poolTopN` 大為選股池 (2) 池內依所選因子（`METRICS[key].betterWhen` 決定方向）排名取前 `topN` 檔，
 等權 / 市值權重持有 (3) 隨還原價每日變動，`execLagDays` 個交易日後才成交，扣交易成本；可設固定/移動停損
-（出場後持有現金到下次再平衡）。基準 = 同一選股池等權；另可疊 `data/baselines.jsonl` 的加權報酬指數與 0050
-（`lib/baselines.ts` 正規化到起點 = 1）。資料源 `loadAllFactorHistory()`。
+（出場後持有現金到下次再平衡）。多空過濾判定空頭時 `bearHolding` = 現金或元大台灣50反1（`00632R`，
+用 `baselines` 的 `e00632r` 逐日報酬，2014-10 前退回現金）。基準 = 同一選股池等權；另可疊
+`data/baselines.jsonl` 的加權報酬指數 / 0050 / 00632R（`lib/baselines.ts` 正規化到起點 = 1）。
+資料源 `loadAllFactorHistory()`。
+
+**鎖定比較**（`compare.ts`，localStorage，最多 4 組）：各自用目前時間區間重算、疊圖 + `CompareTable`。
+**滾動報酬**（`lib/rolling.ts`）：從完整歷史的權益曲線切出每個「往後 N 個月」視窗（逐月推進），
+`RollingChart` + 摘要統計，衡量「連續獲利能力」。
+**側欄**：`components/controls/`（`CycleField` 循環選單 / `StepperField` / `Section` 收合），
+`.panelWrap` 在 ≤820px 收合成「⚙ 設定」（純 CSS，`useMediaQuery` 供其他地方用）。
 `daily` / `backfill` 每次重建 `data/baselines.jsonl`（FinMind `TaiwanStockTotalReturnIndex` + 0050 還原）。
 限制：`backtest_universe` 覆蓋「過去 N 年曾進市值前 60」；再往前、或這 N 年都沒進過前 60 的股票不在其中。
 `universe_history` 之後、下次 backfill 之前的新日期，因子列只含顯示 universe(60)（下次 backfill 補回）。
@@ -91,9 +101,10 @@
 
 ## 操作計畫與每日提醒信
 
-`engine.ts` 的換股時點由 `rebalanceDay` 決定（`M`：每月第幾日；`W`：每週星期幾，預設 1 = 當期
-第一個交易日，向後相容）。`rebalanceDates`（回測用，當期沒達標則回填最後一個交易日）與
-`isRebalanceDay` / `nextRebalanceDate`（即時訊號用，不回填）共用同一套錨定邏輯。
+`engine.ts` 的換股時點由 `rebalanceDay` 決定（`M`：每月**第 N 個交易日**，1 = 月初第一個；
+`W`：每週星期幾）。`rebalanceDates`（回測，交易日直接來自 factor history）與 `isRebalanceDay` /
+`nextRebalanceDate`（即時 / 提醒信，用 `data/calendar.json` 的休市日）共用同一套邏輯。
+「跟上線日同順位」= `tradingDayOrdinal(startDate)`，讓實單和回測對齊。
 
 `web/src/features/signal/report.ts` 的 `buildOperatorReport(history, baselines, plan, names)` 是純函式，
 吃一份操作計畫（策略 + 上線日 + 目前持股）吐出「今天收盤後該知道的一切」。三處消費：訊號頁、

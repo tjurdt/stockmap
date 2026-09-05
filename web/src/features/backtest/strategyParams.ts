@@ -17,6 +17,7 @@ export type StrategyParams = Required<
     | 'regime'
     | 'regimeDays'
     | 'regimeExit'
+    | 'bearHolding'
   >
 >
 
@@ -33,6 +34,7 @@ export const DEFAULT_PARAMS: StrategyParams = {
   regime: 'off',
   regimeDays: 200,
   regimeExit: 'rebalance',
+  bearHolding: 'cash',
 }
 
 export function encodeParams(p: StrategyParams): string {
@@ -49,6 +51,7 @@ export function encodeParams(p: StrategyParams): string {
     regime: p.regime,
     regimeDays: String(p.regimeDays),
     regimeExit: p.regimeExit,
+    bear: p.bearHolding,
   }).toString()
 }
 
@@ -63,7 +66,7 @@ export function decodeParams(qs: string): StrategyParams {
     topN: num('topN', DEFAULT_PARAMS.topN),
     poolTopN: num('pool', DEFAULT_PARAMS.poolTopN),
     rebalance: q.get('rebal') === 'W' ? 'W' : 'M',
-    rebalanceDay: Math.min(28, Math.max(1, num('rebalDay', DEFAULT_PARAMS.rebalanceDay))),
+    rebalanceDay: Math.min(23, Math.max(1, num('rebalDay', DEFAULT_PARAMS.rebalanceDay))),
     weighting: q.get('weight') === 'mcap' ? 'mcap' : 'equal',
     execLagDays: q.get('lag') === '0' ? 0 : 1,
     stopType:
@@ -77,5 +80,6 @@ export function decodeParams(qs: string): StrategyParams {
         : 'off',
     regimeDays: num('regimeDays', DEFAULT_PARAMS.regimeDays),
     regimeExit: q.get('regimeExit') === 'immediate' ? 'immediate' : 'rebalance',
+    bearHolding: q.get('bear') === 'inverse' ? 'inverse' : 'cash',
   }
 }

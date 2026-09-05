@@ -41,6 +41,13 @@
   color: var(--muted);
   margin: 4px 0 0;
 }
+.nextDay {
+  margin: 0 0 4px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+}
 .radios {
   display: flex;
   gap: 6px;

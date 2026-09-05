@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 
 from .adjustments import fetch_adjustment_factors
 from .baselines import rebuild_baselines
+from .calendar import rebuild_calendar
 from .config import CODES, UNIVERSE
 from .history import append_history_row, build_history_row
 from .paths import LATEST_JSON, PRICES_JSON, TPE
@@ -87,10 +88,16 @@ def main() -> int:
     appended = append_history_row(row)
 
     try:
-        n = rebuild_baselines()  # 大盤報酬指數 + 0050 還原
+        n = rebuild_baselines()  # 大盤報酬指數 + 0050 / 00632R 還原
         print(f"  baselines: {n} 列")
     except Exception as e:  # noqa: BLE001 — 基準掛掉不影響主流程
         print(f"  warn: baselines 更新失敗 ({e})", file=sys.stderr)
+
+    try:
+        n = rebuild_calendar()  # 台股休市日曆
+        print(f"  calendar: {n} 個休市日")
+    except Exception as e:  # noqa: BLE001 — 日曆掛掉不影響主流程
+        print(f"  warn: calendar 更新失敗 ({e})", file=sys.stderr)
 
     print(
         f"{today}: 寫入 {len(snapshot['stocks'])} 檔，序列長度 {snapshot['histLen']}，"

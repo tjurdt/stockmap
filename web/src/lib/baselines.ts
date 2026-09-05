@@ -1,10 +1,11 @@
-/** data/baselines.jsonl —— 大盤報酬指數 + 0050 還原，供回測圖表當市場參照。 */
+/** data/baselines.jsonl —— 大盤報酬指數 + 0050 / 00632R 還原，供回測圖表當市場參照。 */
 import { z } from 'zod'
 
 const rowSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   twiiTR: z.number().finite().positive().optional(),
   e0050: z.number().finite().positive().optional(),
+  e00632r: z.number().finite().positive().optional(),
 })
 
 export type BaselineRow = z.infer<typeof rowSchema>
@@ -18,6 +19,7 @@ export async function loadBaselines(): Promise<BaselineRow[]> {
     const res = await fetch(path)
     if (res.status === 404) continue
     if (!res.ok) throw new Error(`HTTP ${res.status} 讀取 baselines`)
+    if (res.headers.get('content-type')?.includes('text/html')) continue
     return res.text().then((t) =>
       t
         .split('\n')
@@ -36,7 +38,7 @@ export async function loadBaselines(): Promise<BaselineRow[]> {
 export function alignNormalized(
   rows: BaselineRow[],
   dates: string[],
-  key: 'twiiTR' | 'e0050',
+  key: 'twiiTR' | 'e0050' | 'e00632r',
 ): (number | null)[] | null {
   const byDate = new Map<string, number>()
   for (const r of rows) if (r[key] != null) byDate.set(r.date, r[key]!)

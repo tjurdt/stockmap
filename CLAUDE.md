@@ -17,7 +17,7 @@
 
 | 模組 | 觸發 | 做什麼 |
 | --- | --- | --- |
-| `twse_pipeline.daily` | `fetch-twse`（每交易日多次）| FinMind 收盤（TWSE STOCK_DAY_ALL 常慢一天，備援）+ TWSE BWIBBU 估值 → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` |
+| `twse_pipeline.daily` | `fetch-twse`（每交易日多次）| FinMind 收盤（TWSE STOCK_DAY_ALL 常慢一天，備援）+ TWSE BWIBBU 估值 → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` + 重建 `data/baselines.jsonl`（大盤報酬指數 / 0050 / 00632R）與 `data/calendar.json`（台股休市日曆） |
 | `twse_pipeline.backfill` | `backfill`（手動）| FinMind 原始價 + 配息還原 → 回填約一年 `prices.json` + 整檔重建 `data/history/` |
 | `twse_pipeline.universe_rank` | `rank-universe`（每週一）| 全市場市值 → 重排 `schema/universe.json`（`TOP_N`=60，前端顯示 `displayCount`=20 檔，其餘供回測選股池），新進榜股自動 backfill（需 `FINMIND_TOKEN`）|
 
@@ -60,6 +60,8 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
    前端從 snapshot 讀，不讀這個檔。
 3. **因子數學只在 `pipeline/src/twse_pipeline/factors.py`，而且要有測試。** 前端只視覺化算好的值。
    即時模式（`web/src/lib/overlay.ts`）只覆寫價/漲跌/市值，動能維持收盤。
+   回測 / 訊號邏輯在 `web/src/features/backtest/engine.ts`（純函式、有測試）；換股時點用真實交易日曆
+   （`web/src/lib/calendar.ts` ← `data/calendar.json`），「每月第 N 個交易日」。
 4. **因子 key 三處對齊**：`factors.py` 的 `FACTORS`、`schema/snapshot.schema.json`、
    `web/src/lib/metrics.ts` 的 `METRICS`。
 5. **前端 zod schema 與 JSON Schema 對齊**：`web/src/lib/data.contract.test.ts`（snapshot）與

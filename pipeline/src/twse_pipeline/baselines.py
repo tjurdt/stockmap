@@ -1,10 +1,11 @@
-"""市場參照基準 → data/baselines.jsonl（每列 {date, twiiTR, e0050}）。
+"""市場參照基準 → data/baselines.jsonl（每列 {date, twiiTR, e0050, e00632r}）。
 
-  twiiTR — 發行量加權股價報酬指數（大盤含息），FinMind
-  e0050  — 元大台灣50 還原權值收盤（含息），FinMind 原始價 + 配息自行還原
+  twiiTR  — 發行量加權股價報酬指數（大盤含息），FinMind
+  e0050   — 元大台灣50 還原權值收盤（含息），FinMind 原始價 + 配息自行還原
+  e00632r — 元大台灣50反1 收盤（2014-10 才成立），FinMind 原始價（無息、無分割）
 
-回測圖表把策略 / 基準 / 這兩條都正規化到起點 = 1 來比較。每次 daily / backfill 重建整檔
-（~1300 列、~40 KB，只有最後一列會變，git delta 友善）。
+回測圖表把策略 / 基準都正規化到起點 = 1 來比較；e00632r 另供「空頭買反 1」策略。
+每次 daily / backfill 重建整檔（~1300 列、~40 KB，只有最後一列會變，git delta 友善）。
 """
 
 from __future__ import annotations
@@ -30,7 +31,10 @@ def build_rows(*, lookback_days: int = LOOKBACK_DAYS) -> list[dict]:
     dates, adj, _ = build_adjusted_series(raw, divs, splits=KNOWN_SPLITS.get("0050", ()))
     e0050 = dict(zip(dates, adj, strict=True))
 
-    all_dates = sorted(set(twii) | set(e0050))
+    # 元大台灣50反1：無配息、無分割，直接用原始收盤
+    e00632r = dict(fetch_prices("00632R", start, end))
+
+    all_dates = sorted(set(twii) | set(e0050) | set(e00632r))
     rows: list[dict] = []
     for d in all_dates:
         row: dict[str, object] = {"date": d}
@@ -38,6 +42,8 @@ def build_rows(*, lookback_days: int = LOOKBACK_DAYS) -> list[dict]:
             row["twiiTR"] = round(twii[d], 2)
         if d in e0050:
             row["e0050"] = round(e0050[d], 4)
+        if d in e00632r:
+            row["e00632r"] = round(e00632r[d], 4)
         if len(row) > 1:
             rows.append(row)
     return rows

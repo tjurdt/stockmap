@@ -15,7 +15,7 @@ docs/       架構與擴充 playbook
 
 | Workflow | 觸發 | 作用 |
 | --- | --- | --- |
-| `fetch-twse` | 每交易日 14:00 / 18:00 TPE + 隔日補 | 收盤價（FinMind 為主）、更新序列、產出 `data/latest.json` + append `data/history/` |
+| `fetch-twse` | 每交易日 14:00 / 18:00 TPE + 隔日補 | 收盤價（FinMind 為主）、更新序列、產出 `data/latest.json` + append `data/history/` + 重建 `data/baselines.jsonl`（大盤 / 0050 / 台灣50反1）與 `data/calendar.json`（休市日曆） |
 | `backfill` | 手動 | 一次性回填約 5 年歷史（價 + 配息 + PE/PB/DY + 歷史股數）。需 `FINMIND_TOKEN` secret |
 | `rank-universe` | 每週一 16:00 TPE | 依全市場市值重排前 60 名單，新進榜股自動回填 |
 | `deploy` | push / 上述資料 workflow 完成後 | build 前端 + 併入 `data/` → GitHub Pages |

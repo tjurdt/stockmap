@@ -36,6 +36,7 @@
 
 section {
   margin-top: 22px;
+  overflow-x: auto;
 }
 section h3 {
   font-size: 15px;

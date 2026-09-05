@@ -48,3 +48,9 @@ UNIVERSE: list[Constituent] = load_universe()  # 市值前 60（前端顯示）
 CODES: frozenset[str] = frozenset(c.code for c in UNIVERSE)
 RANKED_AT: str | None = universe_ranked_at()
 DISPLAY_COUNT: int = int(_meta().get("displayCount", 20))  # 前端顯示前 N 檔
+
+# 手動補的休市日 —— TWSE holidaySchedule 只給當年度，跨年之際（12 月）next-trading-day
+# 可能落在還沒公布的隔年。這裡補下一年度的幾個確定假日當緩衝；每年初可清掉舊的。
+KNOWN_HOLIDAYS: tuple[str, ...] = (
+    "2027-01-01",  # 中華民國開國紀念日
+)
