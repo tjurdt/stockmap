@@ -5,7 +5,7 @@
  * 則是 GitHub Actions secret `OPERATOR_PLAN`（本檔 `operatorPlanSchema` 的 JSON）。
  * zod schema 需與 `schema/operator_plan.schema.json` 對齊（`plan.contract.test.ts` 會擋 drift）。
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import { DEFAULT_PARAMS, type StrategyParams } from '../features/backtest/strategyParams'
@@ -88,17 +88,38 @@ function read(): PlanState | null {
   }
 }
 
+function write(next: PlanState): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(toPlanJson(next)))
+  } catch {
+    /* 私密視窗 / 停用儲存 → 至少這個 session 還在 */
+  }
+}
+
+/**
+ * @param seedStrategy 從回測頁 URL query 帶來的策略；有值就**覆蓋**既有計畫的策略設定
+ *                     （持股 / 上線日保留）。沒有 query（直接開 /plan）就別傳。
+ */
 export function useOperatorPlan(seedStrategy?: StrategyParams) {
   const [plan, setPlan] = useState<PlanState>(() => read() ?? defaultPlan(seedStrategy))
 
   const save = useCallback((next: PlanState) => {
     setPlan(next)
-    try {
-      localStorage.setItem(KEY, JSON.stringify(toPlanJson(next)))
-    } catch {
-      /* 私密視窗 / 停用儲存 → 至少這個 session 還在 */
-    }
+    write(next)
   }, [])
+
+  // seed 變了（回測頁帶新設定進來）→ 覆蓋策略，其餘保留
+  const seedKey = seedStrategy ? JSON.stringify(seedStrategy) : ''
+  const appliedSeed = useRef('')
+  useEffect(() => {
+    if (!seedStrategy || !seedKey || seedKey === appliedSeed.current) return
+    appliedSeed.current = seedKey
+    setPlan((p) => {
+      const next = { ...p, strategy: seedStrategy }
+      write(next)
+      return next
+    })
+  }, [seedKey, seedStrategy])
 
   return [plan, save] as const
 }
