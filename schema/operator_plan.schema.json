@@ -27,7 +27,7 @@
       "required": [
         "factor", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
         "execLagDays", "stopType", "stopPct", "stopMaDays", "stopExecNext",
-        "swapOnBetter", "swapMargin", "swapMinHoldDays",
+        "swapOnBetter", "swapMargin", "swapMinHoldDays", "swapExecNext",
         "regime", "regimeDays", "regimeExit", "bearHolding"
       ],
       "properties": {
@@ -69,6 +69,10 @@
           "type": "integer",
           "minimum": 0,
           "description": "動能換股：每檔進場後至少持有 N 個交易日才可被換掉"
+        },
+        "swapExecNext": {
+          "type": "boolean",
+          "description": "動能換股成交時點：true=隔一交易日收盤、false=訊號日收盤"
         },
         "regime": { "enum": ["off", "ma", "mom"], "description": "大盤多空過濾指標" },
         "regimeDays": { "type": "integer", "minimum": 1, "description": "多空指標回看天數" },

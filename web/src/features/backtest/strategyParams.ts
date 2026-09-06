@@ -19,6 +19,7 @@ export type StrategyParams = Required<
     | 'swapOnBetter'
     | 'swapMargin'
     | 'swapMinHoldDays'
+    | 'swapExecNext'
     | 'regime'
     | 'regimeDays'
     | 'regimeExit'
@@ -41,6 +42,7 @@ export const DEFAULT_PARAMS: StrategyParams = {
   swapOnBetter: false,
   swapMargin: 15,
   swapMinHoldDays: 10,
+  swapExecNext: true,
   regime: 'off',
   regimeDays: 200,
   regimeExit: 'rebalance',
@@ -63,6 +65,7 @@ export function encodeParams(p: StrategyParams): string {
     swap: p.swapOnBetter ? '1' : '0',
     swapMargin: String(p.swapMargin),
     swapHold: String(p.swapMinHoldDays),
+    swapExec: p.swapExecNext ? '1' : '0',
     regime: p.regime,
     regimeDays: String(p.regimeDays),
     regimeExit: p.regimeExit,
@@ -101,6 +104,7 @@ export function decodeParams(qs: string): StrategyParams {
     swapOnBetter: q.get('swap') === '1',
     swapMargin: numNonNeg('swapMargin', DEFAULT_PARAMS.swapMargin),
     swapMinHoldDays: numNonNeg('swapHold', DEFAULT_PARAMS.swapMinHoldDays),
+    swapExecNext: q.get('swapExec') !== '0',
     regime:
       q.get('regime') === 'ma' || q.get('regime') === 'mom'
         ? (q.get('regime') as 'ma' | 'mom')

@@ -10,6 +10,7 @@ import type { HistoryRow } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import type { OperatorPlan } from '../../lib/plan'
 import {
+  factorRanking,
   isRebalanceDay,
   nextRebalanceDate,
   rankTargets,
@@ -48,6 +49,21 @@ export interface HoldingRow {
   plPct: number | null
   value: number | null
   stop: StopInfo | null
+  /** 當前選定因子的值（收盤） */
+  factor: number | null
+  /** 當前因子在選股池的排名（1 起；不在池中 = null） */
+  factorRank: number | null
+}
+
+export interface FactorBoardRow {
+  /** 選股池內依當前因子的排名（1 起） */
+  rank: number
+  code: string
+  name: string
+  factor: number
+  held: boolean
+  /** 持股 code → 「這檔因子 − 該持股因子」（同單位差值；動能為百分點） */
+  deltaVsHolding: Record<string, number>
 }
 
 export interface ActionRow {
@@ -71,10 +87,16 @@ export interface OperatorReport {
   regime: 'bull' | 'bear'
   /** 與前一交易日不同才有值：前一交易日的多空 */
   regimeChangedFrom: 'bull' | 'bear' | null
-  /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股（排程日 or 動能換股觸發） */
+  /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股（排程日 / 動能換股 / 上線進場） */
   isSignalDay: boolean
   /** 非排程日、但動能換股規則觸發了 */
   swapSignal: boolean
+  /** 已上線、但還沒進場（asOfDate 就是上線進場日） */
+  isEntryDay: boolean
+  /** 第一個 >= 上線日的交易日（上線進場日） */
+  firstEntryDay: string
+  /** 當前因子的選股池排名前十（+ 未進前十的持股），含相對每檔持股的因子差 */
+  factorBoard: FactorBoardRow[]
   /** asOfDate 之後的下一個台股交易日 */
   nextTradingDay: string
   nextRebalanceDate: string
@@ -112,7 +134,11 @@ function strategySummary(plan: OperatorPlan, factorLabel: string): string {
     parts.push(s.stopExecNext ? `${label}（隔日出場）` : label)
   }
   if (s.swapOnBetter) {
-    parts.push(`動能換股（高出 ${s.swapMargin}%、最短持有 ${s.swapMinHoldDays} 交易日）`)
+    parts.push(
+      `動能換股（高出 ${s.swapMargin}%、最短持有 ${s.swapMinHoldDays} 交易日、${
+        s.swapExecNext ? '隔日成交' : '訊號日成交'
+      }）`,
+    )
   }
   if (s.regime !== 'off') {
     parts.push(
@@ -207,7 +233,42 @@ export function buildOperatorReport(
       factorOf,
       heldDays,
     )
-  const isSignalDay = isRebalDay || swapSignal
+
+  // 上線進場：已過上線日、但還沒建倉 → 今天就是進場日（在建倉前每天都提示）
+  const started = lastRow.date >= plan.startDate
+  const firstEntryDay = rows.find((r) => r.date >= plan.startDate)?.date ?? plan.startDate
+  const isEntryDay = started && plan.holdings.length === 0 && regime !== 'bear'
+
+  const isSignalDay = isRebalDay || swapSignal || isEntryDay
+
+  // 動能排行 vs 我的持股（前十 + 未進前十的持股）
+  const heldSet = new Set(plan.holdings.map((h) => h.code))
+  const fullRank = regime === 'bear' ? [] : factorRanking(lastRow, cfg, 9999)
+  const rankOf = new Map(fullRank.map((r, i) => [r.code, i + 1]))
+  const factorByCode = new Map(fullRank.map((r) => [r.code, r.factor]))
+  const boardCodes = [
+    ...fullRank.slice(0, 10).map((r) => r.code),
+    ...plan.holdings.map((h) => h.code).filter((c) => factorByCode.has(c) && !rankOf.has(c)),
+  ]
+  const heldFactors = plan.holdings
+    .map((h) => [h.code, factorByCode.get(h.code) ?? factorOf(h.code)] as const)
+    .filter((e): e is readonly [string, number] => e[1] != null)
+  const factorBoard: FactorBoardRow[] = [...new Set(boardCodes)]
+    .filter((c) => factorByCode.has(c) && rankOf.has(c))
+    .map((code) => {
+      const factor = factorByCode.get(code)!
+      const deltaVsHolding: Record<string, number> = {}
+      for (const [hc, hf] of heldFactors) deltaVsHolding[hc] = factor - hf
+      return {
+        rank: rankOf.get(code)!,
+        code,
+        name: name(code),
+        factor,
+        held: heldSet.has(code),
+        deltaVsHolding,
+      }
+    })
+    .sort((a, b) => a.rank - b.rank)
 
   const stopFrac = (plan.strategy.stopPct ?? 0) / 100
   const maDays = Math.max(2, Math.round(plan.strategy.stopMaDays ?? 20))
@@ -257,6 +318,8 @@ export function buildOperatorReport(
       plPct: price != null ? price / h.entryPrice - 1 : null,
       value: price != null ? price * h.shares : null,
       stop: stopOf(h.code, h.entryPrice, h.entryDate),
+      factor: factorByCode.get(h.code) ?? factorOf(h.code),
+      factorRank: rankOf.get(h.code) ?? null,
     }
   })
 
@@ -295,7 +358,7 @@ export function buildOperatorReport(
 
   return {
     asOfDate: lastRow.date,
-    started: lastRow.date >= plan.startDate,
+    started,
     startDate: plan.startDate,
     factorLabel,
     strategySummary: strategySummary(plan, factorLabel),
@@ -303,6 +366,9 @@ export function buildOperatorReport(
     regimeChangedFrom,
     isSignalDay,
     swapSignal,
+    isEntryDay,
+    firstEntryDay,
+    factorBoard,
     nextTradingDay: nextTradingDay(lastRow.date, holidays),
     nextRebalanceDate: nextRebalanceDate(
       lastRow.date,

@@ -31,8 +31,15 @@ export interface BacktestConfig {
    */
   rebalanceDay?: number
   weighting: Weighting
-  /** 單邊換手的交易成本（基點，1 bp = 0.01%）。台股含手續費 + 證交稅約 20–45 bp。 */
+  /**
+   * 單邊換手的交易成本（基點，1 bp = 0.01%）。舊的單一總成本旋鈕；
+   * 若給 `feeBps` 就用 `feeBps`（手續費）+ `taxBps`（賣出證交稅）的非對稱模型。
+   */
   costBps: number
+  /** 單邊手續費（bp）。國泰證券 2.8 折 ≈ 0.1425% × 0.28 ≈ 4 bp。省略 = 用 costBps。 */
+  feeBps?: number
+  /** 賣出證交稅（bp）。個股 0.3% = 30 bp、ETF 0.1% = 10 bp。省略 = 0。 */
+  taxBps?: number
   /**
    * 訊號日到實際成交隔幾個交易日。
    * 0 = 用訊號日收盤價當天換（理想，有前視偏誤）。
@@ -63,6 +70,8 @@ export interface BacktestConfig {
   swapOnBetter?: boolean
   swapMargin?: number
   swapMinHoldDays?: number
+  /** 動能換股成交時點。true（預設）= 隔一交易日收盤；false = 訊號日收盤。 */
+  swapExecNext?: boolean
   /**
    * 多空環境過濾（用加權報酬指數判斷）。off = 關（預設）。
    * ma：指數在自身 regimeDays 日均線之上 = 多頭，之下 = 空頭。
@@ -309,6 +318,25 @@ function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number
   return w
 }
 
+/**
+ * 池內依 `cfg.factor` 排序取前 n（動能 / 殖利率高→低、本益比 / 淨值比低→高）。
+ * 給操作訊號頁「動能排行 vs 持股」用；不受 `topN` 限制。
+ */
+export function factorRanking(
+  row: HistoryRow,
+  cfg: BacktestConfig,
+  n: number,
+): { code: string; factor: number }[] {
+  const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
+  const inPool = new Set(poolCodes(row, cfg.poolTopN))
+  return row.stocks
+    .filter((s) => inPool.has(s.code))
+    .map((s) => ({ code: s.code, factor: histValue(s, cfg.factor) }))
+    .filter((s): s is { code: string; factor: number } => s.factor !== null)
+    .sort((a, b) => dir * (a.factor - b.factor))
+    .slice(0, Math.max(1, Math.round(n)))
+}
+
 /** 依市值取當日前 n 大 `{code, mcap}`（n 省略 = 全部），市值大→小。 */
 export function poolRanked(row: HistoryRow, n?: number): { code: string; mcap: number }[] {
   const withMcap = row.stocks
@@ -511,10 +539,15 @@ export function runBacktest(
   let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
   // 每檔進場後的參考 adjClose（買進日）、波段高點、進場那天的 row index（給最短持有天數）
   const entry = new Map<string, { in: number; peak: number; idx: number }>()
-  const cost1 = cfg.costBps / 1e4
+  // 非對稱交易成本：買進只課手續費，賣出課手續費 + 證交稅
+  const feeFrac = (cfg.feeBps ?? cfg.costBps) / 1e4
+  const taxFrac = (cfg.taxBps ?? 0) / 1e4
+  const buyFrac = feeFrac
+  const sellFrac = feeFrac + taxFrac
 
   // 動能換股：一有池內未持有的股票、因子明顯優於手上最弱一檔就換（門檻 + 最短持有兩道閘）
   const swapOn = cfg.swapOnBetter === true
+  const swapLag = cfg.swapExecNext === false ? 0 : 1
 
   const applyRebalance = (
     target: Map<string, number>,
@@ -525,7 +558,7 @@ export function runBacktest(
   ) => {
     const to = turnoverOf(weights, target)
     turnovers.push(to)
-    eq *= 1 - cost1 * to * 2 // 來回
+    eq *= 1 - to * (buyFrac + sellFrac) // 賣掉 to、買進 to
     weights = target
     for (const c of target.keys()) {
       if (!entry.has(c)) {
@@ -562,7 +595,7 @@ export function runBacktest(
         for (const c of pendingStops) {
           const w = weights.get(c) ?? 0
           if (w > 0 && c !== INVERSE_CODE) {
-            eq *= 1 - cost1 * w
+            eq *= 1 - sellFrac * w
             weights.set(c, 0)
             entry.delete(c)
             stops++
@@ -596,7 +629,7 @@ export function runBacktest(
           if (stopExecNext) {
             pendingStops.add(c)
           } else {
-            eq *= 1 - cost1 * w // 賣出成本
+            eq *= 1 - sellFrac * w // 賣出成本
             weights.set(c, 0)
             entry.delete(c)
             stops++
@@ -611,17 +644,17 @@ export function runBacktest(
         const inInverse = (weights.get(INVERSE_CODE) ?? 0) > 1e-9
         const wantInverse = bearInverse && invRet.has(row.date)
         if (stockW > 1e-9) {
-          eq *= 1 - cost1 * stockW
+          eq *= 1 - sellFrac * stockW
           weights = new Map()
           entry.clear()
           if (pending && pending.target.size > 0) pending = null // 取消尚未成交的進場
         }
         if (wantInverse && !inInverse && weights.size === 0) {
-          eq *= 1 - cost1 // 買進反 1 成本
+          eq *= 1 - buyFrac // 買進反 1 成本
           weights = new Map([[INVERSE_CODE, 1]])
           entry.set(INVERSE_CODE, { in: 0, peak: 0, idx: i })
         } else if (!wantInverse && inInverse) {
-          eq *= 1 - cost1 // 反 1 → 現金
+          eq *= 1 - sellFrac // 反 1 → 現金
           weights = new Map()
           entry.delete(INVERSE_CODE)
         }
@@ -662,8 +695,8 @@ export function runBacktest(
           },
         )
         if (swap) {
-          pending = { target, applyAt: i + lag, signalDate: row.date }
-          if (lag === 0) {
+          pending = { target, applyAt: i + swapLag, signalDate: row.date }
+          if (swapLag === 0) {
             applyRebalance(target, row.date, row.date, adj, i)
             pending = null
           }

@@ -86,7 +86,8 @@ function subjectOf(r: OperatorReport): string {
   const bits: string[] = []
   if (r.stopActionsNow.length) bits.push(`⚠️停損 ${r.stopActionsNow.length} 檔`)
   if (r.regimeChangedFrom) bits.push(r.regime === 'bear' ? '轉空頭' : '轉多頭')
-  if (r.isSignalDay) bits.push('明天換股')
+  if (r.isEntryDay) bits.push('上線進場')
+  else if (r.isSignalDay) bits.push('明天換股')
   if (!r.started) bits.push('策略待上線')
   if (!bits.length) bits.push('無須動作')
   return `[台股動力] ${r.asOfDate} · ${bits.join(' · ')}`
@@ -107,11 +108,13 @@ function textOf(r: OperatorReport): string {
       (r.bearInverse ? ' —— 空頭策略：手上放元大台灣50反1（00632R）' : ''),
   )
   L.push(
-    r.isSignalDay
-      ? `${r.asOfDate} 是換股訊號日${
-          r.swapSignal ? '（動能換股觸發）' : ''
-        } → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
-      : `今天不是換股日；下次換股約 ${r.nextRebalanceDate}。在那之前抱著不動、只看停損。`,
+    r.isEntryDay
+      ? `${r.asOfDate} 是上線進場日 → 下一交易日（${r.nextTradingDay}）照下列清單建倉。`
+      : r.isSignalDay
+        ? `${r.asOfDate} 是換股訊號日${
+            r.swapSignal ? '（動能換股觸發）' : ''
+          } → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
+        : `今天不是換股日；下次換股約 ${r.nextRebalanceDate}。在那之前抱著不動、只看停損。`,
   )
   L.push('')
   if (r.stopActionsNow.length) {
@@ -119,7 +122,13 @@ function textOf(r: OperatorReport): string {
     for (const s of r.stopActionsNow) L.push(`  - ${s.code} ${s.name}（${pct(s.dropPct)}）→ 出場`)
     L.push('')
   }
-  L.push(r.isSignalDay ? '本次換股動作：' : `下次換股（約 ${r.nextRebalanceDate}）預覽：`)
+  L.push(
+    r.isEntryDay
+      ? '上線進場清單：'
+      : r.isSignalDay
+        ? '本次換股動作：'
+        : `下次換股（約 ${r.nextRebalanceDate}）預覽：`,
+  )
   for (const a of r.actions) {
     const verb = a.kind === 'sell' ? '賣出' : a.kind === 'buy' ? '買進' : '續抱'
     const tail =
@@ -169,7 +178,14 @@ function htmlOf(r: OperatorReport): string {
     p.push(
       box(
         '#fff8e1',
-        `策略尚未上線（上線日 <b>${r.startDate}</b>）。下方「目標持股」＝上線當天要買的清單；在那之前不用動作。`,
+        `策略尚未上線（上線日 <b>${r.startDate}</b>，第一個交易日 <b>${r.firstEntryDay}</b>）。下方「目標持股」＝上線當天要買的清單；在那之前不用動作。`,
+      ),
+    )
+  } else if (r.isEntryDay) {
+    p.push(
+      box(
+        '#eef7f0',
+        `<b>今天是上線進場日</b>（上線日 ${r.startDate}）—— 照下方清單建倉；之後每逢換股日再依規則調整。`,
       ),
     )
   }
@@ -187,11 +203,13 @@ function htmlOf(r: OperatorReport): string {
       : '') +
     (r.bearInverse ? '<br>空頭策略：手上放元大台灣50反1（00632R）' : '') +
     '<br>' +
-    (r.isSignalDay
-      ? `<b>${r.asOfDate} 是換股訊號日${
-          r.swapSignal ? '（動能換股觸發）' : ''
-        }</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
-      : `今天不是換股日；下次換股約 <b>${r.nextRebalanceDate}</b>。在那之前抱著不動、只看停損。`)
+    (r.isEntryDay
+      ? `<b>${r.asOfDate} 是上線進場日</b> → 下一交易日（${r.nextTradingDay}）照「上線進場清單」建倉。`
+      : r.isSignalDay
+        ? `<b>${r.asOfDate} 是換股訊號日${
+            r.swapSignal ? '（動能換股觸發）' : ''
+          }</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
+        : `今天不是換股日；下次換股約 <b>${r.nextRebalanceDate}</b>。在那之前抱著不動、只看停損。`)
   p.push(box(r.regime === 'bear' ? '#fdecea' : '#eef7f0', regimeTxt))
 
   if (r.stopActionsNow.length) {
@@ -208,7 +226,13 @@ function htmlOf(r: OperatorReport): string {
   }
 
   p.push(
-    h3(r.isSignalDay ? '本次換股動作（明天執行）' : `下次換股（約 ${r.nextRebalanceDate}）預覽`),
+    h3(
+      r.isEntryDay
+        ? '上線進場清單（明天執行）'
+        : r.isSignalDay
+          ? '本次換股動作（明天執行）'
+          : `下次換股（約 ${r.nextRebalanceDate}）預覽`,
+    ),
   )
   p.push('<ul style="margin:0;padding-left:18px">')
   for (const a of r.actions) {

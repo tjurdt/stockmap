@@ -93,15 +93,54 @@ describe('buildOperatorReport', () => {
     expect(r.actions.find((a) => a.kind === 'buy')?.code).toBe('1111')
   })
 
-  it('非換股日 → isSignalDay=false，nextRebalanceDate 在未來', () => {
+  it('非換股日、已建倉 → isSignalDay=false，nextRebalanceDate 在未來', () => {
     const r = buildOperatorReport(
       history(10),
       [],
-      plan({ strategy: { rebalance: 'M', rebalanceDay: 25 } }),
+      plan({
+        strategy: { rebalance: 'M', rebalanceDay: 25 },
+        holdings: [{ code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+      }),
       names,
     )!
     expect(r.isSignalDay).toBe(false)
+    expect(r.isEntryDay).toBe(false)
     expect(r.nextRebalanceDate > r.asOfDate).toBe(true)
+  })
+
+  it('已上線、還沒建倉 → isEntryDay=true、isSignalDay=true', () => {
+    const r = buildOperatorReport(
+      history(10),
+      [],
+      plan({ startDate: '2026-01-01', strategy: { rebalance: 'M', rebalanceDay: 25 } }),
+      names,
+    )!
+    expect(r.started).toBe(true)
+    expect(r.isEntryDay).toBe(true)
+    expect(r.isSignalDay).toBe(true)
+    expect(r.firstEntryDay).toBe('2026-01-01')
+    expect(r.actions.every((a) => a.kind === 'buy')).toBe(true)
+  })
+
+  it('動能排行 vs 持股：前十 + 差值', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: { poolTopN: 10 },
+        holdings: [{ code: '2222', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+      }),
+      names,
+    )!
+    expect(r.factorBoard.length).toBeGreaterThan(0)
+    expect(r.factorBoard[0]!.rank).toBe(1)
+    expect(r.factorBoard[0]!.code).toBe('1111') // 動能最高
+    const board1111 = r.factorBoard.find((b) => b.code === '1111')!
+    // 1111 動能 50、2222 動能 10 → 差 +40
+    expect(board1111.deltaVsHolding['2222']).toBeCloseTo(40)
+    expect(r.factorBoard.find((b) => b.code === '2222')?.held).toBe(true)
+    expect(r.holdings[0]!.factor).toBe(10)
+    expect(r.holdings[0]!.factorRank).toBe(2) // 1111 > 2222 > 3333
   })
 
   it('固定停損：跌破買進價 stopPct% → hit 且列入 stopActionsNow', () => {

@@ -16,6 +16,7 @@
     "swapOnBetter": false,
     "swapMargin": 15,
     "swapMinHoldDays": 10,
+    "swapExecNext": true,
     "regime": "ma",
     "regimeDays": 200,
     "regimeExit": "rebalance",
