@@ -25,7 +25,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "factor", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
+        "factor", "momDays", "momSkip", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
         "execLagDays", "stopType", "stopPct", "stopMaDays", "stopExecNext",
         "swapOnBetter", "swapMargin", "swapMinHoldDays", "swapExecNext",
         "regime", "regimeDays", "regimeExit", "bearHolding"
@@ -34,6 +34,16 @@
         "factor": {
           "enum": ["price", "mcap", "pe", "pb", "dy", "chg", "turn", "m20", "m60", "m121"],
           "description": "排名因子 key（對齊 web/src/lib/metrics.ts）"
+        },
+        "momDays": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "自訂動能回看天數（0 = 用因子內建；只在 factor 是 m20/m60/m121 時生效）"
+        },
+        "momSkip": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "自訂動能跳過最近幾個交易日（0 = 不跳）"
         },
         "topN": { "type": "integer", "minimum": 1, "description": "持股檔數" },
         "poolTopN": { "type": "integer", "minimum": 1, "description": "選股池：當日市值前 N 大" },

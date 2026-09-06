@@ -24,7 +24,8 @@ const WEEKDAYS = [
 
 export function PlannerPage() {
   const search = useLocation().search
-  const seed = useMemo(() => decodeParams(search), [search])
+  // 有 query（從回測頁帶設定過來）才傳 seed —— 直接開 /plan 就別動既有計畫
+  const seed = useMemo(() => (search ? decodeParams(search) : undefined), [search])
   const [plan, setPlan] = useOperatorPlan(seed)
   const s = plan.strategy
 
@@ -148,6 +149,9 @@ export function PlannerPage() {
           <div className={`${styles.group} ${styles.gStrategy}`}>
             <label className={styles.field}>策略參數</label>
             <p className={styles.strategyLine}>{report?.strategySummary ?? '載入中…'}</p>
+            {search && (
+              <p className={styles.hint}>✓ 已用回測頁帶來的設定更新策略（持股 / 上線日保留）。</p>
+            )}
             <Link to={`/backtest?${strategyQuery}`} className={styles.link}>
               → 回回測頁調整因子 / 檔數 / 停損 / 動能換股 / 多空過濾
             </Link>

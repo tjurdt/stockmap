@@ -3,6 +3,8 @@
   "startDate": "2026-09-15",
   "strategy": {
     "factor": "m121",
+    "momDays": 0,
+    "momSkip": 0,
     "topN": 5,
     "poolTopN": 50,
     "rebalance": "M",

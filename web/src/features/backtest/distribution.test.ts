@@ -46,17 +46,25 @@ describe('distributionOutcomes', () => {
     expect(a.map((o) => o.ret)).not.toEqual(b.map((o) => o.ret))
   })
 
-  it('all：涵蓋所有換股日 → 結果不受 rebalanceDay 影響', () => {
+  it('all：掃過所有換股日 → 結果不受 rebalanceDay 影響', () => {
     const a = distributionOutcomes(h, { ...base, rebalanceDay: 1 }, [], 3, 'all')
     const b = distributionOutcomes(h, { ...base, rebalanceDay: 15 }, [], 3, 'all')
     expect(a.length).toBe(b.length)
     expect(a.map((o) => o.ret)).toEqual(b.map((o) => o.ret))
-    // 20 個相位 → 樣本數約是 follow 的 20 倍
     const one = distributionOutcomes(h, { ...base, rebalanceDay: 1 }, [], 3, 'follow')
     expect(a.length).toBeGreaterThan(one.length * 10)
   })
 
+  it('aligned：只從換股日進場、掃過所有換股日 → 不受 rebalanceDay 影響、樣本比 all 少', () => {
+    const a = distributionOutcomes(h, { ...base, rebalanceDay: 1 }, [], 3, 'aligned')
+    const b = distributionOutcomes(h, { ...base, rebalanceDay: 20 }, [], 3, 'aligned')
+    expect(a.map((o) => o.ret)).toEqual(b.map((o) => o.ret))
+    const all = distributionOutcomes(h, { ...base, rebalanceDay: 1 }, [], 3, 'all')
+    expect(a.length).toBeLessThan(all.length)
+    expect(a.length).toBeGreaterThan(0)
+  })
+
   it('資料不足回空', () => {
-    expect(distributionOutcomes([], base, [], 6, 'all')).toEqual([])
+    expect(distributionOutcomes([], base, [], 6, 'aligned')).toEqual([])
   })
 })

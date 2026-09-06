@@ -156,3 +156,13 @@
 .body {
   padding: 4px 12px 12px;
 }
+
+/* ── SubGroup（條件展開的連鎖子設定）── */
+.subgroup {
+  margin: 4px 0 6px 10px;
+  padding: 2px 0 4px 8px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+.subgroup > .row:first-child {
+  margin-top: 0;
+}

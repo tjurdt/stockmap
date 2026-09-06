@@ -5,6 +5,7 @@ import { Layout } from '../../components/Layout'
 import { CycleField } from '../../components/controls/CycleField'
 import { Section } from '../../components/controls/Section'
 import { StepperField } from '../../components/controls/StepperField'
+import { SubGroup } from '../../components/controls/SubGroup'
 import { useAsync } from '../../hooks/useAsync'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useSnapshot } from '../../hooks/useSnapshot'
@@ -15,7 +16,13 @@ import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../..
 import { CompareTable, type CompareRow } from './CompareTable'
 import { useLockedStrategies } from './compare'
 import { distributionOutcomes, type DistMode } from './distribution'
-import { BACKTEST_FACTORS, poolAtDate, runBacktest, type BacktestConfig } from './engine'
+import {
+  BACKTEST_FACTORS,
+  MOMENTUM_KEYS,
+  poolAtDate,
+  runBacktest,
+  type BacktestConfig,
+} from './engine'
 import { EquityChart } from './EquityChart'
 import { LockedBar } from './LockedBar'
 import { MethodNotes } from './MethodNotes'
@@ -156,11 +163,11 @@ export function BacktestPage() {
 
   // 報酬分布：逐交易日起點、抱滿 N 個月的所有結果（用完整歷史）
   const [distMonths, setDistMonths] = useState(() => stored?.distMonths ?? 12)
-  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'all')
-  // 'all' 模式涵蓋所有換股日 → 結果不受 rebalanceDay 影響，memo key 就把它拿掉，避免白重算
+  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'aligned')
+  // aligned / all 掃過所有換股日 → 結果不受 rebalanceDay 影響，memo key 拿掉它避免白重算
   const distKey = useMemo(() => {
     const c: Partial<BacktestConfig> = { ...cfg }
-    if (distMode === 'all') delete c.rebalanceDay
+    if (distMode !== 'follow') delete c.rebalanceDay
     return `${JSON.stringify(c)}|${distMonths}|${distMode}`
   }, [cfg, distMonths, distMode])
   const outcomes = useMemo(
@@ -196,6 +203,8 @@ export function BacktestPage() {
 
   const asParams = (c: BacktestConfig): StrategyParams => ({
     factor: c.factor,
+    momDays: c.momDays ?? 0,
+    momSkip: c.momSkip ?? 0,
     topN: c.topN,
     poolTopN: c.poolTopN ?? 50,
     rebalance: c.rebalance,
@@ -334,6 +343,30 @@ export function BacktestPage() {
           options={FACTOR_OPTS}
           onChange={(v) => patch({ factor: v })}
         />
+        {MOMENTUM_KEYS.has(cfg.factor) && (
+          <SubGroup>
+            <StepperField
+              label="回看天數"
+              value={cfg.momDays ?? 0}
+              min={0}
+              max={300}
+              step={5}
+              onChange={(v) => patch({ momDays: v })}
+              format={(v) => (v === 0 ? '用內建窗' : `${v} 交易日`)}
+            />
+            {(cfg.momDays ?? 0) > 0 && (
+              <StepperField
+                label="跳過近期"
+                value={cfg.momSkip ?? 0}
+                min={0}
+                max={60}
+                step={5}
+                onChange={(v) => patch({ momSkip: v })}
+                format={(v) => `${v} 交易日`}
+              />
+            )}
+          </SubGroup>
+        )}
         <StepperField
           label="持股數"
           value={cfg.topN}
@@ -399,7 +432,7 @@ export function BacktestPage() {
           onChange={(v) => patch({ swapOnBetter: v === 'on' })}
         />
         {cfg.swapOnBetter && (
-          <>
+          <SubGroup>
             <StepperField
               label="換股門檻"
               value={cfg.swapMargin ?? 15}
@@ -427,7 +460,7 @@ export function BacktestPage() {
               ]}
               onChange={(v) => patch({ swapExecNext: v === 'next' })}
             />
-          </>
+          </SubGroup>
         )}
       </Section>
 
@@ -444,43 +477,45 @@ export function BacktestPage() {
           ]}
           onChange={(v) => patch({ stopType: v })}
         />
-        {stopType !== 'none' && stopType !== 'ma' && (
-          <StepperField
-            label={
-              stopType === 'trailing'
-                ? '停損%（自高點）'
-                : stopType === 'daily'
-                  ? '單日跌幅%'
-                  : '停損%（自買進）'
-            }
-            value={cfg.stopPct ?? 20}
-            min={2}
-            max={50}
-            onChange={(v) => patch({ stopPct: v })}
-            format={(v) => `${v}%`}
-          />
-        )}
-        {stopType === 'ma' && (
-          <StepperField
-            label="均線天數"
-            value={cfg.stopMaDays ?? 20}
-            min={5}
-            max={120}
-            step={5}
-            onChange={(v) => patch({ stopMaDays: v })}
-            format={(v) => `${v} 日`}
-          />
-        )}
         {stopType !== 'none' && (
-          <CycleField
-            label="停損成交"
-            value={cfg.stopExecNext ? 'next' : 'close'}
-            options={[
-              ['close', '當日收盤'],
-              ['next', '隔一交易日'],
-            ]}
-            onChange={(v) => patch({ stopExecNext: v === 'next' })}
-          />
+          <SubGroup>
+            {stopType !== 'ma' && (
+              <StepperField
+                label={
+                  stopType === 'trailing'
+                    ? '停損%（自高點）'
+                    : stopType === 'daily'
+                      ? '單日跌幅%'
+                      : '停損%（自買進）'
+                }
+                value={cfg.stopPct ?? 20}
+                min={2}
+                max={50}
+                onChange={(v) => patch({ stopPct: v })}
+                format={(v) => `${v}%`}
+              />
+            )}
+            {stopType === 'ma' && (
+              <StepperField
+                label="均線天數"
+                value={cfg.stopMaDays ?? 20}
+                min={5}
+                max={120}
+                step={5}
+                onChange={(v) => patch({ stopMaDays: v })}
+                format={(v) => `${v} 日`}
+              />
+            )}
+            <CycleField
+              label="停損成交"
+              value={cfg.stopExecNext ? 'next' : 'close'}
+              options={[
+                ['close', '當日收盤'],
+                ['next', '隔一交易日'],
+              ]}
+              onChange={(v) => patch({ stopExecNext: v === 'next' })}
+            />
+          </SubGroup>
         )}
         <CycleField
           label="多空過濾"
@@ -493,7 +528,7 @@ export function BacktestPage() {
           onChange={(v) => patch({ regime: v })}
         />
         {(cfg.regime ?? 'off') !== 'off' && (
-          <>
+          <SubGroup>
             <StepperField
               label="回看天數"
               value={cfg.regimeDays ?? 200}
@@ -521,7 +556,7 @@ export function BacktestPage() {
               ]}
               onChange={(v) => patch({ bearHolding: v })}
             />
-          </>
+          </SubGroup>
         )}
       </Section>
 
@@ -713,17 +748,20 @@ export function BacktestPage() {
                     <h3>
                       報酬分布{' '}
                       <span className={styles.sub}>
-                        {distMode === 'all'
-                          ? `任一交易日進場、任一換股日、抱滿 N 個月的所有結果（${distSummary.n.toLocaleString()} 組）`
-                          : `任一交易日進場、抱滿 N 個月的所有結果（${distSummary.n} 個起點）`}
+                        {distMode === 'aligned'
+                          ? `換股日進場、掃過所有換股日、抱滿 N 個月（${distSummary.n.toLocaleString()} 組）`
+                          : distMode === 'all'
+                            ? `任一交易日進場、掃過所有換股日、抱滿 N 個月（${distSummary.n.toLocaleString()} 組）`
+                            : `任一交易日進場、抱滿 N 個月（${distSummary.n} 個起點）`}
                       </span>
                     </h3>
                     <div className={styles.distControls}>
                       <CycleField
-                        label="換股日"
+                        label="取樣"
                         value={distMode}
                         options={[
-                          ['all', '涵蓋所有'],
+                          ['aligned', '換股日進場'],
+                          ['all', '每日進場'],
                           ['follow', '跟隨設定'],
                         ]}
                         onChange={setDistMode}
@@ -783,9 +821,11 @@ export function BacktestPage() {
                     )}
                   </div>
                   <p className={styles.rollLegend}>
-                    {distMode === 'all'
-                      ? '「涵蓋所有換股日」= 每月第 1..20 個交易日換股各跑一次、把結果合起來，分布不受你選第幾個交易日影響。'
-                      : '「跟隨設定」= 用你目前設定的換股日。'}
+                    {distMode === 'aligned'
+                      ? '「換股日進場」= 每月第 1..20 個交易日換股各跑一次，只從換股日當進場點；不隨你設的換股日變。'
+                      : distMode === 'all'
+                        ? '「每日進場」= 同上但每個交易日都當進場點，樣本更多；不隨你設的換股日變。'
+                        : '「跟隨設定」= 用你目前設定的換股日。'}
                     重疊視窗、非獨立樣本，期望值與標準差僅供參考。詳見下方說明。
                   </p>
                 </section>

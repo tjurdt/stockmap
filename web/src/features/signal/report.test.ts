@@ -155,7 +155,29 @@ describe('buildOperatorReport', () => {
     )!
     const h = r.holdings.find((x) => x.code === '3333')!
     expect(h.stop?.hit).toBe(true)
+    expect(h.stop?.stopPrice).toBeCloseTo(90) // 買進價 100 × (1 − 10%)
+    expect(h.stop?.peakPrice).toBeNull()
     expect(r.stopActionsNow.map((s) => s.code)).toContain('3333')
+  })
+
+  it('移動停損：refPrice = 波段最高收盤、stopPrice、peakPrice', () => {
+    // 1111 一路漲 30 天 → 波段最高 = 最後一天收盤；距高點 0
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: { stopType: 'trailing', stopPct: 15 },
+        holdings: [{ code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+      }),
+      names,
+    )!
+    const h = r.holdings.find((x) => x.code === '1111')!
+    const peak = 100 * 1.01 ** 29
+    expect(h.stop?.type).toBe('trailing')
+    expect(h.stop?.peakPrice).toBeCloseTo(peak, 4)
+    expect(h.stop?.stopPrice).toBeCloseTo(peak * 0.85, 4)
+    expect(h.stop?.pct).toBeCloseTo(0, 6) // 現價 = 高點
+    expect(h.stop?.hit).toBe(false)
   })
 
   it('單日跌幅停損：3333 前一日 → 今日跌幅超過 stopPct% → hit', () => {

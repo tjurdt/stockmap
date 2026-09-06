@@ -16,6 +16,7 @@ import {
   rankTargets,
   regimeByDate,
   shouldSwap,
+  withCustomMomentum,
   type BacktestConfig,
 } from '../backtest/engine'
 
@@ -29,9 +30,13 @@ export interface TargetRow {
 
 export interface StopInfo {
   type: 'fixed' | 'trailing' | 'daily' | 'ma'
-  /** 參考價：固定＝買進價；移動＝買進後最高（含當日收盤）；均線＝當日均線值；單日＝前一交易日收盤 */
+  /** 參考價：固定＝買進價；移動＝買進後最高收盤；均線＝當日均線值；單日＝前一交易日收盤 */
   refPrice: number
-  /** 現價相對參考價的漲跌幅（負值＝虧損） */
+  /** 觸發價位（現價跌破這個就出場） */
+  stopPrice: number
+  /** 移動停損的波段最高收盤（含當日）；其餘型態為 null */
+  peakPrice: number | null
+  /** 現價相對參考價的漲跌幅（負值＝虧損；移動停損時＝距高點） */
   pct: number
   hit: boolean
   /** 距觸發還有多少百分點（已觸發為 <= 0） */
@@ -168,7 +173,13 @@ export function buildOperatorReport(
   const prevRow = rows.at(-2)
 
   const cfg = cfgOf(plan)
-  const factorLabel = METRICS[cfg.factor].label
+  // 自訂動能窗：把因子欄位換成重算值，排名一律用這份
+  const fRows = withCustomMomentum(rows, cfg)
+  const fLast = fRows.at(-1)!
+  const custom = (cfg.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(cfg.factor)
+  const factorLabel = custom
+    ? `自訂動能 ${cfg.momDays}${(cfg.momSkip ?? 0) > 0 ? `-${cfg.momSkip}` : ''} 日`
+    : METRICS[cfg.factor].label
 
   const regimeMap = regimeByDate(
     [prevRow?.date ?? lastRow.date, lastRow.date],
@@ -202,7 +213,7 @@ export function buildOperatorReport(
     return mx
   }
 
-  const rawTargets = regime === 'bear' ? [] : rankTargets(lastRow, cfg)
+  const rawTargets = regime === 'bear' ? [] : rankTargets(fLast, cfg)
   const targets: TargetRow[] = rawTargets.map((t) => ({
     code: t.code,
     name: name(t.code),
@@ -213,7 +224,7 @@ export function buildOperatorReport(
 
   // 動能換股：非排程日也可能因為挑戰者反超而觸發換股
   const factorOf = (code: string): number | null => {
-    const s = lastRow.stocks.find((x) => x.code === code)
+    const s = fLast.stocks.find((x) => x.code === code)
     if (!s) return null
     const v = (s as Record<string, unknown>)[METRICS[cfg.factor].field]
     return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -243,7 +254,7 @@ export function buildOperatorReport(
 
   // 動能排行 vs 我的持股（前十 + 未進前十的持股）
   const heldSet = new Set(plan.holdings.map((h) => h.code))
-  const fullRank = regime === 'bear' ? [] : factorRanking(lastRow, cfg, 9999)
+  const fullRank = regime === 'bear' ? [] : factorRanking(fLast, cfg, 9999)
   const rankOf = new Map(fullRank.map((r, i) => [r.code, i + 1]))
   const factorByCode = new Map(fullRank.map((r) => [r.code, r.factor]))
   const boardCodes = [
@@ -292,18 +303,20 @@ export function buildOperatorReport(
     const now = px(code)
     if (now == null) return null
 
+    const peakPrice = type === 'trailing' ? Math.max(entryPrice, peakSince(code, entryDate)) : null
     let refPrice: number | null
-    if (type === 'trailing') refPrice = Math.max(entryPrice, peakSince(code, entryDate))
+    if (type === 'trailing') refPrice = peakPrice
     else if (type === 'ma') refPrice = maClose(code, maDays)
     else if (type === 'daily') refPrice = prevClose(code)
     else refPrice = entryPrice
     if (refPrice == null || refPrice <= 0) return null
 
     const pct = now / refPrice - 1
-    // ma：現價低於均線就出場（不看 stopPct）；其餘：跌幅超過 stopPct
+    // ma：現價低於均線就出場（不看 stopPct，停損線 = 均線本身）；其餘：跌幅超過 stopPct
+    const stopPrice = type === 'ma' ? refPrice : refPrice * (1 - stopFrac)
     const hit = type === 'ma' ? pct < 0 : pct <= -stopFrac
     const room = type === 'ma' ? pct : pct + stopFrac
-    return { type, refPrice, pct, hit, room }
+    return { type, refPrice, stopPrice, peakPrice, pct, hit, room }
   }
 
   const holdings: HoldingRow[] = plan.holdings.map((h) => {

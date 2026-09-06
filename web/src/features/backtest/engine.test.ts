@@ -4,10 +4,12 @@ import type { BaselineRow } from '../../lib/baselines'
 import type { HistoryRow } from '../../lib/history'
 import {
   isRebalanceDay,
+  momentumPct,
   nextRebalanceDate,
   rebalanceDates,
   regimeByDate,
   runBacktest,
+  withCustomMomentum,
 } from './engine'
 
 function row(
@@ -587,5 +589,74 @@ describe('nextRebalanceDate', () => {
 
   it('每週：回傳下一個指定星期（W=1 → 下週一）', () => {
     expect(nextRebalanceDate('2026-01-07', 'W', 1)).toBe('2026-01-12') // 週三 → 下週一
+  })
+})
+
+describe('momentumPct', () => {
+  it('對齊 total_return：start = 倒數 need、end = 倒數 1+skip', () => {
+    const s = [100, 101, 102, 103, 104, 105] // 6 個點
+    expect(momentumPct(s, 5, 0)).toBeCloseTo((105 / 100 - 1) * 100, 6)
+    expect(momentumPct(s, 3, 0)).toBeCloseTo((105 / 102 - 1) * 100, 6)
+    // skip=1：end 用倒數第 2 個（104）、start 仍是倒數 need（102）
+    expect(momentumPct(s, 3, 1)).toBeCloseTo((104 / 102 - 1) * 100, 6)
+  })
+  it('長度不足回 null', () => {
+    expect(momentumPct([100, 101], 5, 0)).toBeNull()
+    expect(momentumPct([100, 101, 102], 3, 0)).toBeNull() // need=4 > 3
+  })
+})
+
+describe('withCustomMomentum', () => {
+  const rows: HistoryRow[] = Array.from({ length: 30 }, (_, i) =>
+    row(`2026-01-${String(i + 1).padStart(2, '0')}`, [
+      { code: '1111', adj: 100 * 1.01 ** i, f: 999 }, // f 是舊 mom20，應被覆蓋
+      { code: '2222', adj: 100 * 0.99 ** i, f: 999 },
+    ]),
+  )
+
+  it('momDays=0 或非動能因子 → 原樣回傳', () => {
+    expect(withCustomMomentum(rows, { factor: 'm20', topN: 1, rebalance: 'M', weighting: 'equal', costBps: 0 })).toBe(rows) // prettier-ignore
+    expect(withCustomMomentum(rows, { factor: 'pe', momDays: 20, topN: 1, rebalance: 'M', weighting: 'equal', costBps: 0 })).toBe(rows) // prettier-ignore
+  })
+
+  it('自訂窗 → 依 adjClose 重算 mom 欄位', () => {
+    const out = withCustomMomentum(rows, {
+      factor: 'm20',
+      momDays: 10,
+      momSkip: 0,
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+    })
+    // 第 11 天（index 10）：1111 近 10 日還原報酬 = 1.01^10 - 1
+    expect(out[10]!.stocks[0]!.mom20).toBeCloseTo((1.01 ** 10 - 1) * 100, 4)
+    expect(out[10]!.stocks[1]!.mom20).toBeCloseTo((0.99 ** 10 - 1) * 100, 4)
+    // 前幾天序列不足 → null
+    expect(out[3]!.stocks[0]!.mom20).toBeNull()
+    // 原 rows 不被改
+    expect(rows[10]!.stocks[0]!.mom20).toBe(999)
+  })
+
+  it('自訂窗透過 runBacktest：短窗選到近期最強者', () => {
+    // 前 15 天 A 漲、B 跌；第 16 天起反轉。短窗（5 日）在後段會選到 B。
+    const h = Array.from({ length: 30 }, (_, i) => {
+      const aUp = i < 15
+      return row(`2026-02-${String(i + 1).padStart(2, '0')}`, [
+        { code: '1111', adj: aUp ? 100 * 1.02 ** i : 100 * 1.02 ** 14 * 0.98 ** (i - 14), f: 0 },
+        { code: '2222', adj: aUp ? 100 * 0.98 ** i : 100 * 0.98 ** 14 * 1.02 ** (i - 14), f: 0 },
+      ])
+    })
+    const r = runBacktest(h, {
+      factor: 'm20',
+      momDays: 5,
+      topN: 1,
+      rebalance: 'M',
+      rebalanceDay: 20,
+      weighting: 'equal',
+      costBps: 0,
+      execLagDays: 0,
+    })
+    expect(r.holdings.at(-1)!.codes).toEqual(['2222']) // 後段短窗動能最強
   })
 })

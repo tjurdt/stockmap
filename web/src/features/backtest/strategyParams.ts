@@ -6,6 +6,8 @@ export type StrategyParams = Required<
   Pick<
     BacktestConfig,
     | 'factor'
+    | 'momDays'
+    | 'momSkip'
     | 'topN'
     | 'poolTopN'
     | 'rebalance'
@@ -29,6 +31,8 @@ export type StrategyParams = Required<
 
 export const DEFAULT_PARAMS: StrategyParams = {
   factor: 'm121',
+  momDays: 0,
+  momSkip: 0,
   topN: 5,
   poolTopN: 50,
   rebalance: 'M',
@@ -52,6 +56,8 @@ export const DEFAULT_PARAMS: StrategyParams = {
 export function encodeParams(p: StrategyParams): string {
   return new URLSearchParams({
     factor: p.factor,
+    momDays: String(p.momDays),
+    momSkip: String(p.momSkip),
     topN: String(p.topN),
     pool: String(p.poolTopN),
     rebal: p.rebalance,
@@ -87,6 +93,8 @@ export function decodeParams(qs: string): StrategyParams {
   }
   return {
     factor: (q.get('factor') as MetricKey) || DEFAULT_PARAMS.factor,
+    momDays: numNonNeg('momDays', DEFAULT_PARAMS.momDays),
+    momSkip: numNonNeg('momSkip', DEFAULT_PARAMS.momSkip),
     topN: num('topN', DEFAULT_PARAMS.topN),
     poolTopN: num('pool', DEFAULT_PARAMS.poolTopN),
     rebalance: q.get('rebal') === 'W' ? 'W' : 'M',
