@@ -90,12 +90,46 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
+.stepInput {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  padding: 6px 2px;
+  -moz-appearance: textfield;
+}
+.stepInput:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--surface);
+}
 
 /* ── Section ── */
 .section {
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--section-bg, var(--surface));
   margin-bottom: 8px;
+}
+.toneRange {
+  --section-bg: var(--tone-range);
+}
+.tonePick {
+  --section-bg: var(--tone-pick);
+}
+.toneSwap {
+  --section-bg: var(--tone-swap);
+}
+.toneRisk {
+  --section-bg: var(--tone-risk);
+}
+.toneCost {
+  --section-bg: var(--tone-cost);
 }
 .section > summary {
   padding: 8px 12px;

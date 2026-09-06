@@ -24,6 +24,7 @@ import { EquityChart } from './EquityChart'
 import { LockedBar } from './LockedBar'
 import { MethodNotes } from './MethodNotes'
 import { OutcomeHistogram } from './OutcomeHistogram'
+import { readBacktestPrefs, writeBacktestPrefs } from './prefs'
 import { RollingChart } from './RollingChart'
 import { decodeParams, encodeParams, type StrategyParams } from './strategyParams'
 import styles from './backtest.module.css'
@@ -60,10 +61,24 @@ export function BacktestPage() {
   const snap = useSnapshot()
   const navigate = useNavigate()
   const search = useLocation().search
-  const [cfg, setCfg] = useState<BacktestConfig>(() => ({ costBps: 30, ...decodeParams(search) }))
+  const stored = useMemo(() => readBacktestPrefs(), [])
+  const [cfg, setCfg] = useState<BacktestConfig>(() => {
+    const base = { costBps: 30, feeBps: 4, taxBps: 30 }
+    if (search) return { ...base, ...decodeParams(search) }
+    if (stored?.params)
+      return {
+        ...base,
+        ...stored.params,
+        feeBps: stored.feeBps ?? base.feeBps,
+        taxBps: stored.taxBps ?? base.taxBps,
+      }
+    return { ...base, ...decodeParams('') }
+  })
   const patch = (p: Partial<BacktestConfig>) => setCfg((c) => ({ ...c, ...p }))
-  const [refs, setRefs] = useState({ twii: true, e0050: true, e00632r: false })
-  const [windowMonths, setWindowMonths] = useState(12)
+  const [refs, setRefs] = useState(
+    () => stored?.refs ?? { twii: true, e0050: true, e00632r: false },
+  )
+  const [windowMonths, setWindowMonths] = useState(() => stored?.windowMonths ?? 12)
   const { locked, add, remove, clear } = useLockedStrategies()
   const isMobile = useMediaQuery('(max-width: 820px)')
 
@@ -87,10 +102,12 @@ export function BacktestPage() {
   const [endMonth, setEndMonth] = useState('')
   useEffect(() => {
     if (months.length && !startMonth) {
-      setStartMonth(months[Math.max(0, months.length - 37)]!)
-      setEndMonth(months.at(-1)!)
+      const s = stored?.startMonth && months.includes(stored.startMonth) ? stored.startMonth : null
+      const e = stored?.endMonth && months.includes(stored.endMonth) ? stored.endMonth : null
+      setStartMonth(s ?? months[Math.max(0, months.length - 37)]!)
+      setEndMonth(e ?? months.at(-1)!)
     }
-  }, [months, startMonth])
+  }, [months, startMonth, stored])
   const quickRange = (yrs: number | 'all') => {
     if (!months.length) return
     setEndMonth(months.at(-1)!)
@@ -142,7 +159,7 @@ export function BacktestPage() {
   const rollSummary = useMemo(() => summarizeRolling(rolling), [rolling])
 
   // 報酬分布：逐交易日起點、抱滿 N 個月的所有結果（用完整歷史）
-  const [distMonths, setDistMonths] = useState(12)
+  const [distMonths, setDistMonths] = useState(() => stored?.distMonths ?? 12)
   const outcomes = useMemo(() => {
     if (!fullResult) return []
     return dailyWindowOutcomes(
@@ -196,12 +213,28 @@ export function BacktestPage() {
     swapOnBetter: c.swapOnBetter ?? false,
     swapMargin: c.swapMargin ?? 15,
     swapMinHoldDays: c.swapMinHoldDays ?? 10,
+    swapExecNext: c.swapExecNext ?? true,
     regime: c.regime ?? 'off',
     regimeDays: c.regimeDays ?? 200,
     regimeExit: c.regimeExit ?? 'rebalance',
     bearHolding: c.bearHolding ?? 'cash',
   })
   const paramsQuery = useMemo(() => encodeParams(asParams(cfg)), [cfg])
+
+  // 記憶設定到這台裝置（startMonth 還沒定好前不寫）
+  useEffect(() => {
+    if (!startMonth) return
+    writeBacktestPrefs({
+      params: asParams(cfg),
+      feeBps: cfg.feeBps ?? 4,
+      taxBps: cfg.taxBps ?? 30,
+      startMonth,
+      endMonth,
+      refs,
+      distMonths,
+      windowMonths,
+    })
+  }, [cfg, startMonth, endMonth, refs, distMonths, windowMonths])
 
   const series = useMemo(() => {
     type S = { label: string; values: (number | null)[]; color: string; dashed?: boolean }
@@ -256,7 +289,7 @@ export function BacktestPage() {
 
   const panel = (
     <>
-      <Section title="回測區間" defaultOpen>
+      <Section title="回測區間" tone="range" defaultOpen>
         <div className={styles.quick}>
           {(
             [
@@ -289,7 +322,7 @@ export function BacktestPage() {
         </div>
       </Section>
 
-      <Section title="選股" defaultOpen>
+      <Section title="選股" tone="pick" defaultOpen>
         <StepperField
           label={`選股池 前 ${poolShown} 大`}
           value={cfg.poolTopN ?? 50}
@@ -323,7 +356,7 @@ export function BacktestPage() {
         />
       </Section>
 
-      <Section title="換股" defaultOpen>
+      <Section title="換股" tone="swap" defaultOpen>
         <CycleField
           label="頻率"
           value={cfg.rebalance}
@@ -388,11 +421,20 @@ export function BacktestPage() {
               onChange={(v) => patch({ swapMinHoldDays: v })}
               format={(v) => `${v} 交易日`}
             />
+            <CycleField
+              label="換股成交"
+              value={(cfg.swapExecNext ?? true) ? 'next' : 'close'}
+              options={[
+                ['next', '隔一交易日'],
+                ['close', '訊號日收盤'],
+              ]}
+              onChange={(v) => patch({ swapExecNext: v === 'next' })}
+            />
           </>
         )}
       </Section>
 
-      <Section title="風控">
+      <Section title="風控" tone="risk">
         <CycleField
           label="停損"
           value={stopType}
@@ -486,16 +528,28 @@ export function BacktestPage() {
         )}
       </Section>
 
-      <Section title="成本">
+      <Section title="成本" tone="cost">
         <StepperField
-          label="交易成本"
-          value={cfg.costBps}
+          label="手續費"
+          value={cfg.feeBps ?? 4}
           min={0}
-          max={100}
-          step={5}
-          onChange={(v) => patch({ costBps: v })}
+          max={30}
+          step={1}
+          onChange={(v) => patch({ feeBps: v })}
           format={(v) => `單邊 ${v} bp`}
         />
+        <StepperField
+          label="證交稅"
+          value={cfg.taxBps ?? 30}
+          min={0}
+          max={50}
+          step={5}
+          onChange={(v) => patch({ taxBps: v })}
+          format={(v) => `賣出 ${v} bp`}
+        />
+        <p className={styles.sub} style={{ margin: '6px 2px 0' }}>
+          國泰證券 2.8 折 ≈ 手續費 4 bp／邊；個股賣出另課證交稅 30 bp（ETF 10）。
+        </p>
       </Section>
     </>
   )

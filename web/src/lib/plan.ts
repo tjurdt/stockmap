@@ -28,6 +28,7 @@ export const strategySchema = z.object({
   swapOnBetter: z.boolean(),
   swapMargin: z.number().nonnegative(),
   swapMinHoldDays: z.number().int().nonnegative(),
+  swapExecNext: z.boolean(),
   regime: z.enum(['off', 'ma', 'mom']),
   regimeDays: z.number().int().positive(),
   regimeExit: z.enum(['rebalance', 'immediate']),

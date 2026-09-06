@@ -86,6 +86,31 @@ describe('runBacktest', () => {
     expect(costly).toBeLessThan(free)
   })
 
+  it('非對稱成本：賣出（手續費 + 證交稅）比只用手續費更拖累', () => {
+    // 每週換股、來回都有；有證交稅時每次換股多扣一次賣出稅
+    const cfg = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'W' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      feeBps: 4,
+    }
+    const feeOnly = runBacktest(history(28), cfg).metrics.totalReturn
+    const feePlusTax = runBacktest(history(28), { ...cfg, taxBps: 30 }).metrics.totalReturn
+    expect(feePlusTax).toBeLessThan(feeOnly)
+    // 停損出場也吃賣出稅
+    const stopCfg = { ...cfg, stopType: 'fixed' as const, stopPct: 5, execLagDays: 0 }
+    const crash = Array.from({ length: 15 }, (_, i) =>
+      row(`2026-07-${String(i + 1).padStart(2, '0')}`, [
+        { code: '1111', adj: i < 3 ? 100 : 90, f: 1 },
+      ]),
+    )
+    const s0 = runBacktest(crash, stopCfg).metrics.totalReturn
+    const s1 = runBacktest(crash, { ...stopCfg, taxBps: 30 }).metrics.totalReturn
+    expect(s1).toBeLessThan(s0)
+  })
+
   it('respects betterWhen=low for value factors (picks the cheap one)', () => {
     // A pe 低（=便宜，pe 因子下比較好）但股價持平；B pe 高但股價上漲。
     // 選 pe 最低 topN=1 → 應該持有 A → 落後於「兩檔等權」基準。
@@ -393,6 +418,16 @@ describe('runBacktest', () => {
         swapMinHoldDays: 100,
       })
       expect(held.holdings.at(-1)!.codes).toEqual(['1111'])
+    })
+
+    it('swapExecNext：訊號日收盤成交比隔一日早進 B 一天', () => {
+      const swapCfg = { ...base, swapOnBetter: true, swapMargin: 15, swapMinHoldDays: 5 }
+      const nextDay = runBacktest(build(100), { ...swapCfg, swapExecNext: true })
+      const sameDay = runBacktest(build(100), { ...swapCfg, swapExecNext: false })
+      expect(nextDay.holdings.at(-1)!.codes).toEqual(['2222'])
+      expect(sameDay.holdings.at(-1)!.codes).toEqual(['2222'])
+      // B 一路漲 → 早一天換到 B 賺更多
+      expect(sameDay.metrics.totalReturn).toBeGreaterThan(nextDay.metrics.totalReturn)
     })
   })
 
