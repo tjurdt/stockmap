@@ -2,6 +2,7 @@
  * 回測頁設定的記憶 —— 存這台裝置的 localStorage，切走再回來還在。
  * URL query（從 /plan 或分享連結帶來的）優先於記憶。
  */
+import type { DistMode } from './distribution'
 import type { StrategyParams } from './strategyParams'
 
 const KEY = 'stockmap:backtest.v1'
@@ -14,6 +15,7 @@ export interface BacktestPrefs {
   endMonth: string
   refs: { twii: boolean; e0050: boolean; e00632r: boolean }
   distMonths: number
+  distMode: DistMode
   windowMonths: number
 }
 
