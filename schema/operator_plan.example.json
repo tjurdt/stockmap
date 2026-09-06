@@ -11,6 +11,8 @@
     "execLagDays": 1,
     "stopType": "trailing",
     "stopPct": 20,
+    "stopMaDays": 20,
+    "stopExecNext": false,
     "regime": "ma",
     "regimeDays": 200,
     "regimeExit": "rebalance",

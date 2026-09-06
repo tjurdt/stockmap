@@ -119,6 +119,39 @@ describe('buildOperatorReport', () => {
     expect(r.stopActionsNow.map((s) => s.code)).toContain('3333')
   })
 
+  it('單日跌幅停損：3333 前一日 → 今日跌幅超過 stopPct% → hit', () => {
+    // 3333 每天 -1%，單日跌幅約 -1%；門檻設 0.5% → 命中
+    const r = buildOperatorReport(
+      history(20),
+      [],
+      plan({
+        strategy: { stopType: 'daily', stopPct: 0.5 },
+        holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+      }),
+      names,
+    )!
+    const h = r.holdings.find((x) => x.code === '3333')!
+    expect(h.stop?.type).toBe('daily')
+    expect(h.stop?.hit).toBe(true)
+  })
+
+  it('跌破均線停損：3333 一路跌 → 收盤低於 N 日均線 → hit；1111 一路漲 → 不 hit', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: { stopType: 'ma', stopMaDays: 5 },
+        holdings: [
+          { code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' },
+          { code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' },
+        ],
+      }),
+      names,
+    )!
+    expect(r.holdings.find((x) => x.code === '3333')!.stop?.hit).toBe(true)
+    expect(r.holdings.find((x) => x.code === '1111')!.stop?.hit).toBe(false)
+  })
+
   it('regime 轉變：昨天多、今天空 → regimeChangedFrom=bull，targets 清空', () => {
     const h = history(12)
     // 指數緩漲 11 天、最後一天跳水 → 5 日均線只在最後一天翻空

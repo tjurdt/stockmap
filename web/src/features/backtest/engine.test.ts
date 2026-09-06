@@ -143,6 +143,83 @@ describe('runBacktest', () => {
     expect(withStop.metrics.totalReturn).toBeCloseTo(-0.12, 2) // 停在 -12%，之後持有現金
   })
 
+  it('daily stop-loss exits on a single-day plunge', () => {
+    // A 前 4 天持平，第 5 天單日 -12%，之後續跌。daily stop 8% → 第 5 天出場。
+    const seq = [100, 100, 100, 100, 88, 80, 72, 65, 60, 55]
+    const h = seq.map((adj, i) =>
+      row(`2026-07-${String(i + 1).padStart(2, '0')}`, [{ code: '1111', adj, f: 1 }]),
+    )
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+    }
+    const r = runBacktest(h, { ...base, stopType: 'daily', stopPct: 8 })
+    expect(r.metrics.stops).toBe(1)
+    // 停在第 5 天收盤 88 → -12%，之後抱現金
+    expect(r.metrics.totalReturn).toBeCloseTo(-0.12, 2)
+    // 沒停損 → 一路跌到 55
+    const noStop = runBacktest(h, base)
+    expect(noStop.metrics.totalReturn).toBeCloseTo(-0.45, 2)
+  })
+
+  it('ma stop-loss exits when close drops below its own moving average', () => {
+    // A 漲到 120 後崩跌；跌破 5 日均線就出場。
+    const seq = [100, 104, 108, 112, 116, 120, 118, 108, 96, 84, 72]
+    const h = seq.map((adj, i) =>
+      row(`2026-08-${String(i + 1).padStart(2, '0')}`, [{ code: '1111', adj, f: 1 }]),
+    )
+    const r = runBacktest(h, {
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+      execLagDays: 0,
+      stopType: 'ma',
+      stopMaDays: 5,
+    })
+    expect(r.metrics.stops).toBe(1)
+    // 跌破均線那天出場 → 損失有限，遠優於抱到 72
+    expect(r.metrics.totalReturn).toBeGreaterThan(-0.2)
+    const noStop = runBacktest(h, {
+      factor: 'm20',
+      topN: 1,
+      rebalance: 'M',
+      weighting: 'equal',
+      costBps: 0,
+      execLagDays: 0,
+    })
+    expect(r.metrics.totalReturn).toBeGreaterThan(noStop.metrics.totalReturn)
+  })
+
+  it('stopExecNext delays the exit by one trading day', () => {
+    const seq = [100, 100, 100, 100, 100, 80, 76, 72, 70, 68]
+    const h = seq.map((adj, i) =>
+      row(`2026-09-${String(i + 1).padStart(2, '0')}`, [{ code: '1111', adj, f: 1 }]),
+    )
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+      stopType: 'fixed' as const,
+      stopPct: 10,
+    }
+    const sameDay = runBacktest(h, base)
+    const nextDay = runBacktest(h, { ...base, stopExecNext: true })
+    expect(sameDay.metrics.stops).toBe(1)
+    expect(nextDay.metrics.stops).toBe(1)
+    // 觸發日收盤 80、隔天收盤 76 → 晚一天出場、少賺（多虧）
+    expect(sameDay.metrics.totalReturn).toBeCloseTo(-0.2, 2)
+    expect(nextDay.metrics.totalReturn).toBeCloseTo(-0.24, 2)
+  })
+
   it('trailing stop-loss triggers on drawdown from peak', () => {
     // A 漲到 120 再回落到 105（自高點 -12.5%）。trailing 10% → 出場。
     const seq = [100, 105, 110, 115, 120, 118, 112, 105, 100, 95]

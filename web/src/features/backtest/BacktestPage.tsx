@@ -191,6 +191,8 @@ export function BacktestPage() {
     execLagDays: c.execLagDays ?? 1,
     stopType: c.stopType ?? 'none',
     stopPct: c.stopPct ?? 20,
+    stopMaDays: c.stopMaDays ?? 20,
+    stopExecNext: c.stopExecNext ?? false,
     regime: c.regime ?? 'off',
     regimeDays: c.regimeDays ?? 200,
     regimeExit: c.regimeExit ?? 'rebalance',
@@ -364,17 +366,47 @@ export function BacktestPage() {
             ['none', '關'],
             ['fixed', '固定'],
             ['trailing', '移動'],
+            ['daily', '單日跌幅'],
+            ['ma', '跌破均線'],
           ]}
           onChange={(v) => patch({ stopType: v })}
         />
-        {stopType !== 'none' && (
+        {stopType !== 'none' && stopType !== 'ma' && (
           <StepperField
-            label={stopType === 'trailing' ? '停損%（自高點）' : '停損%（自買進）'}
+            label={
+              stopType === 'trailing'
+                ? '停損%（自高點）'
+                : stopType === 'daily'
+                  ? '單日跌幅%'
+                  : '停損%（自買進）'
+            }
             value={cfg.stopPct ?? 20}
             min={2}
             max={50}
             onChange={(v) => patch({ stopPct: v })}
             format={(v) => `${v}%`}
+          />
+        )}
+        {stopType === 'ma' && (
+          <StepperField
+            label="均線天數"
+            value={cfg.stopMaDays ?? 20}
+            min={5}
+            max={120}
+            step={5}
+            onChange={(v) => patch({ stopMaDays: v })}
+            format={(v) => `${v} 日`}
+          />
+        )}
+        {stopType !== 'none' && (
+          <CycleField
+            label="停損成交"
+            value={cfg.stopExecNext ? 'next' : 'close'}
+            options={[
+              ['close', '當日收盤'],
+              ['next', '隔一交易日'],
+            ]}
+            onChange={(v) => patch({ stopExecNext: v === 'next' })}
           />
         )}
         <CycleField

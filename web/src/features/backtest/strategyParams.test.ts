@@ -12,8 +12,10 @@ describe('strategyParams', () => {
       rebalanceDay: 3,
       weighting: 'mcap' as const,
       execLagDays: 0,
-      stopType: 'trailing' as const,
+      stopType: 'ma' as const,
       stopPct: 15,
+      stopMaDays: 60,
+      stopExecNext: true,
       regime: 'ma' as const,
       regimeDays: 120,
       regimeExit: 'immediate' as const,
@@ -33,6 +35,7 @@ describe('strategyParams', () => {
     expect(d.rebalance).toBe('M')
     expect(d.rebalanceDay).toBe(23) // clamp 到 1–23
     expect(d.stopType).toBe('none')
+    expect(d.stopExecNext).toBe(false)
     expect(d.regime).toBe('off')
   })
 })

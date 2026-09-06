@@ -13,7 +13,7 @@ import { METRICS, type MetricKey } from '../../lib/metrics'
 
 export type Rebalance = 'W' | 'M'
 export type Weighting = 'equal' | 'mcap'
-export type StopType = 'none' | 'fixed' | 'trailing'
+export type StopType = 'none' | 'fixed' | 'trailing' | 'daily' | 'ma'
 export type RegimeIndicator = 'off' | 'ma' | 'mom'
 
 /** 可當排名因子的欄位（history jsonl 有、且排名有意義的）。 */
@@ -41,11 +41,20 @@ export interface BacktestConfig {
   execLagDays?: number
   /**
    * 停損。none = 關（預設）。
-   * fixed：個股自買進日跌超過 stopPct% 就當日出場、持有現金到下次再平衡。
+   * fixed：個股自買進日跌超過 stopPct% 就出場、持有現金到下次再平衡。
    * trailing：從買進後的最高點回落超過 stopPct% 就出場。
+   * daily：單一交易日還原報酬 <= -stopPct% 就出場。
+   * ma：當日還原收盤跌破自身 stopMaDays 日均線就出場（不看 stopPct）。
    */
   stopType?: StopType
   stopPct?: number
+  /** stopType='ma' 的均線天數（預設 20）。 */
+  stopMaDays?: number
+  /**
+   * 停損成交時點。false（預設）= 觸發當日收盤即出場（close-to-close，不看盤中低點）。
+   * true = 觸發後隔一個交易日收盤才出場（貼近實務：收盤後才知道破線）。
+   */
+  stopExecNext?: boolean
   /**
    * 多空環境過濾（用加權報酬指數判斷）。off = 關（預設）。
    * ma：指數在自身 regimeDays 日均線之上 = 多頭，之下 = 空頭。
@@ -308,6 +317,25 @@ function drift(
   return grown // 未加總到 1 的部分 = 現金
 }
 
+/** 某代號在 rows[i] 為止、近 `days` 個交易日還原收盤的均值（資料不足 → 現有的平均，全缺 → null）。 */
+export function maForCode(
+  rows: HistoryRow[],
+  i: number,
+  code: string,
+  days: number,
+): number | null {
+  let sum = 0
+  let n = 0
+  for (let k = Math.max(0, i - Math.max(1, days) + 1); k <= i; k++) {
+    const s = rows[k]?.stocks.find((x) => x.code === code)
+    if (s?.adjClose != null && s.adjClose > 0) {
+      sum += s.adjClose
+      n++
+    }
+  }
+  return n > 0 ? sum / n : null
+}
+
 /** row → {code: adjClose} */
 function adjMap(row: HistoryRow): Map<string, number> {
   const m = new Map<string, number>()
@@ -425,6 +453,10 @@ export function runBacktest(
   const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
   const stopType = cfg.stopType ?? 'none'
   const stopFrac = (cfg.stopPct ?? 0) / 100
+  const stopMaDays = Math.max(2, Math.round(cfg.stopMaDays ?? 20))
+  const stopExecNext = cfg.stopExecNext === true
+  /** stopExecNext 時：偵測到破損、待下一交易日收盤才出場的代號。 */
+  const pendingStops = new Set<string>()
   const immediateExit = (cfg.regime ?? 'off') !== 'off' && cfg.regimeExit === 'immediate'
   const bearInverse = (cfg.regime ?? 'off') !== 'off' && cfg.bearHolding === 'inverse'
   const invRet = bearInverse ? inverseReturns(baselines) : new Map<string, number>()
@@ -477,16 +509,45 @@ export function runBacktest(
         bench *= 1 + poolRets.reduce((a, b) => a + b, 0) / poolRets.length
       }
 
+      // 昨天偵測到、今天收盤才出場的停損（stopExecNext）
+      if (pendingStops.size) {
+        for (const c of pendingStops) {
+          const w = weights.get(c) ?? 0
+          if (w > 0 && c !== INVERSE_CODE) {
+            eq *= 1 - cost1 * w
+            weights.set(c, 0)
+            entry.delete(c)
+            stops++
+          }
+        }
+        pendingStops.clear()
+      }
+
       // 停損檢查（用當日 adjClose）
-      if (stopType !== 'none' && stopFrac > 0) {
+      const stopActive =
+        stopType !== 'none' && (stopType === 'ma' || stopType === 'daily' || stopFrac > 0)
+      if (stopActive) {
         for (const [c, w] of weights) {
           if (w <= 0 || c === INVERSE_CODE) continue // 避險部位不停損
           const e = entry.get(c)
           const px = adj.get(c)
           if (!e || px == null) continue
           e.peak = Math.max(e.peak, px)
-          const ref = stopType === 'trailing' ? e.peak : e.in
-          if (ref > 0 && px / ref - 1 <= -stopFrac) {
+          let hit = false
+          if (stopType === 'daily') {
+            const dr = rets.get(c)
+            hit = dr != null && dr <= -stopFrac
+          } else if (stopType === 'ma') {
+            const ma = maForCode(rows, i, c, stopMaDays)
+            hit = ma != null && px < ma
+          } else {
+            const ref = stopType === 'trailing' ? e.peak : e.in
+            hit = ref > 0 && px / ref - 1 <= -stopFrac
+          }
+          if (!hit) continue
+          if (stopExecNext) {
+            pendingStops.add(c)
+          } else {
             eq *= 1 - cost1 * w // 賣出成本
             weights.set(c, 0)
             entry.delete(c)

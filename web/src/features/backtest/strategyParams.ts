@@ -14,6 +14,8 @@ export type StrategyParams = Required<
     | 'execLagDays'
     | 'stopType'
     | 'stopPct'
+    | 'stopMaDays'
+    | 'stopExecNext'
     | 'regime'
     | 'regimeDays'
     | 'regimeExit'
@@ -31,6 +33,8 @@ export const DEFAULT_PARAMS: StrategyParams = {
   execLagDays: 1,
   stopType: 'none',
   stopPct: 20,
+  stopMaDays: 20,
+  stopExecNext: false,
   regime: 'off',
   regimeDays: 200,
   regimeExit: 'rebalance',
@@ -48,6 +52,8 @@ export function encodeParams(p: StrategyParams): string {
     lag: String(p.execLagDays),
     stop: p.stopType,
     stopPct: String(p.stopPct),
+    stopMaDays: String(p.stopMaDays),
+    stopExecNext: p.stopExecNext ? '1' : '0',
     regime: p.regime,
     regimeDays: String(p.regimeDays),
     regimeExit: p.regimeExit,
@@ -69,11 +75,14 @@ export function decodeParams(qs: string): StrategyParams {
     rebalanceDay: Math.min(23, Math.max(1, num('rebalDay', DEFAULT_PARAMS.rebalanceDay))),
     weighting: q.get('weight') === 'mcap' ? 'mcap' : 'equal',
     execLagDays: q.get('lag') === '0' ? 0 : 1,
-    stopType:
-      q.get('stop') === 'fixed' || q.get('stop') === 'trailing'
-        ? (q.get('stop') as 'fixed' | 'trailing')
-        : 'none',
+    stopType: (['fixed', 'trailing', 'daily', 'ma'] as const).includes(
+      q.get('stop') as 'fixed' | 'trailing' | 'daily' | 'ma',
+    )
+      ? (q.get('stop') as 'fixed' | 'trailing' | 'daily' | 'ma')
+      : 'none',
     stopPct: num('stopPct', DEFAULT_PARAMS.stopPct),
+    stopMaDays: num('stopMaDays', DEFAULT_PARAMS.stopMaDays),
+    stopExecNext: q.get('stopExecNext') === '1',
     regime:
       q.get('regime') === 'ma' || q.get('regime') === 'mom'
         ? (q.get('regime') as 'ma' | 'mom')
