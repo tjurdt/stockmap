@@ -152,6 +152,41 @@ describe('buildOperatorReport', () => {
     expect(r.holdings.find((x) => x.code === '1111')!.stop?.hit).toBe(false)
   })
 
+  it('動能換股：非排程日、持有的股票被排名外挑戰者反超 → swapSignal + isSignalDay', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: {
+          rebalance: 'M',
+          rebalanceDay: 1,
+          swapOnBetter: true,
+          swapMargin: 15,
+          swapMinHoldDays: 5,
+        },
+        holdings: [{ code: '2222', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+      }),
+      names,
+    )!
+    expect(r.swapSignal).toBe(true)
+    expect(r.isSignalDay).toBe(true)
+    expect(r.actions.find((a) => a.kind === 'buy')?.code).toBe('1111')
+    expect(r.actions.find((a) => a.kind === 'sell')?.code).toBe('2222')
+  })
+
+  it('動能換股：最短持有天數未到 → 不觸發', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: { rebalance: 'M', rebalanceDay: 1, swapOnBetter: true, swapMinHoldDays: 999 },
+        holdings: [{ code: '2222', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+      }),
+      names,
+    )!
+    expect(r.swapSignal).toBe(false)
+  })
+
   it('regime 轉變：昨天多、今天空 → regimeChangedFrom=bull，targets 清空', () => {
     const h = history(12)
     // 指數緩漲 11 天、最後一天跳水 → 5 日均線只在最後一天翻空

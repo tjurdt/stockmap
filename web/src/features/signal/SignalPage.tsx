@@ -10,7 +10,13 @@ import { loadCalendar } from '../../lib/calendar'
 import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import { useHoldings, type Position } from '../../lib/portfolio'
-import { isRebalanceDay, nextRebalanceDate, rankTargets, regimeByDate } from '../backtest/engine'
+import {
+  isRebalanceDay,
+  nextRebalanceDate,
+  rankTargets,
+  regimeByDate,
+  shouldSwap,
+} from '../backtest/engine'
 import { decodeParams } from '../backtest/strategyParams'
 import { HoldingsEditor } from './HoldingsEditor'
 import styles from './signal.module.css'
@@ -73,6 +79,14 @@ export function SignalPage() {
     }
     const prevClose = (code: string): number | null =>
       prevRow?.stocks.find((s) => s.code === code)?.close ?? null
+    const factorOf = (code: string): number | null => {
+      const s = lastRow.stocks.find((x) => x.code === code)
+      if (!s) return null
+      const v = (s as Record<string, unknown>)[METRICS[p.factor].field]
+      return typeof v === 'number' && Number.isFinite(v) ? v : null
+    }
+    const heldTradingDays = (from: string): number =>
+      rows.filter((r) => r.date > from && r.date <= lastRow.date).length
     const nextRebal = nextRebalanceDate(lastRow.date, p.rebalance, p.rebalanceDay, holidays)
     return {
       regime,
@@ -81,6 +95,8 @@ export function SignalPage() {
       peakSince,
       maClose,
       prevClose,
+      factorOf,
+      heldTradingDays,
       lastDate: lastRow.date,
       nextRebal,
     }
@@ -125,6 +141,23 @@ export function SignalPage() {
     const pct = now / ref - 1
     return { pct, hit: p.stopType === 'ma' ? pct < 0 : pct <= -p.stopPct / 100 }
   }
+
+  const swapSignal =
+    p.swapOnBetter &&
+    model.regime !== 'bear' &&
+    !model.isRebalDay &&
+    holdings.length > 0 &&
+    shouldSwap(
+      { ...p, costBps: 0 },
+      model.targets.map((t) => t.code),
+      holdings.map((h) => h.code),
+      model.factorOf,
+      (c) => {
+        const h = holdings.find((x) => x.code === c)
+        return h ? model.heldTradingDays(h.entryDate) : 0
+      },
+    )
+  const isSignalDay = model.isRebalDay || swapSignal
 
   const stopLabel =
     p.stopType === 'none'
@@ -177,9 +210,13 @@ export function SignalPage() {
           <p>
             {/* 已在上面講清楚 */}下次進場：換股日（約 {model.nextRebal}）且大盤轉多。
           </p>
-        ) : model.isRebalDay ? (
+        ) : isSignalDay ? (
           <p>
-            <b>{model.lastDate} 是換股訊號日</b> → 下一個交易日照「明天的動作」換股。
+            <b>
+              {model.lastDate} 是換股訊號日
+              {swapSignal && !model.isRebalDay ? '（動能換股觸發）' : ''}
+            </b>{' '}
+            → 下一個交易日照「明天的動作」換股。
           </p>
         ) : (
           <p>
@@ -302,9 +339,11 @@ export function SignalPage() {
 
       <section>
         <h3>
-          {model.isRebalDay ? '明天的動作（換股日）' : `下次換股日（約 ${model.nextRebal}）要做的`}
+          {isSignalDay
+            ? `明天的動作（${swapSignal && !model.isRebalDay ? '動能換股' : '換股日'}）`
+            : `下次換股日（約 ${model.nextRebal}）要做的`}
         </h3>
-        {!model.isRebalDay && (
+        {!isSignalDay && (
           <p className={styles.sub}>
             預覽而已 —— 到 {model.nextRebal} 這份清單會依當時動能重算，不要現在就照這個換。
           </p>

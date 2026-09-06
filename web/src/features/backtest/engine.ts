@@ -251,6 +251,42 @@ export function rankTargets(
     .sort((a, b) => dir * (a.factor - b.factor))
 }
 
+/**
+ * 動能換股決策（純函式，回測引擎與操作訊號共用）。
+ * 當日 target 排名內有「未持有、且因子明顯優於手上最弱一檔」的挑戰者，
+ * 且所有要被換掉的持股都已過最短持有天數 → 回 true。
+ *
+ * @param targetCodes 當日排名的目標持股
+ * @param heldCodes   目前實際持股
+ * @param factorOf    code → 當日因子值（null = 無資料）
+ * @param heldDays    code → 已持有的交易日數
+ */
+export function shouldSwap(
+  cfg: BacktestConfig,
+  targetCodes: string[],
+  heldCodes: string[],
+  factorOf: (code: string) => number | null,
+  heldDays: (code: string) => number,
+): boolean {
+  if (!cfg.swapOnBetter) return false
+  const margin = Math.max(0, (cfg.swapMargin ?? 15) / 100)
+  const minHold = Math.max(0, Math.round(cfg.swapMinHoldDays ?? 10))
+  const dir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
+  const tset = new Set(targetCodes)
+  const hset = new Set(heldCodes)
+  const incumbents = heldCodes.filter((c) => !tset.has(c))
+  const challengers = targetCodes.filter((c) => !hset.has(c))
+  if (!incumbents.length || !challengers.length) return false
+  if (!incumbents.every((c) => heldDays(c) >= minHold)) return false
+  const incVals = incumbents.map(factorOf).filter((v): v is number => v != null)
+  if (!incVals.length) return false
+  const worstInc = incVals.reduce((a, b) => (dir * (a - b) < 0 ? a : b))
+  return challengers.some((c) => {
+    const cv = factorOf(c)
+    return cv != null && dir * (cv - worstInc) >= Math.max(1e-12, Math.abs(worstInc) * margin)
+  })
+}
+
 function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number> {
   const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
   const inPool = new Set(poolCodes(row, cfg.poolTopN)) // 當日市值前 poolTopN 大
@@ -479,12 +515,6 @@ export function runBacktest(
 
   // 動能換股：一有池內未持有的股票、因子明顯優於手上最弱一檔就換（門檻 + 最短持有兩道閘）
   const swapOn = cfg.swapOnBetter === true
-  const swapMargin = Math.max(0, (cfg.swapMargin ?? 15) / 100)
-  const swapMinHold = Math.max(0, Math.round(cfg.swapMinHoldDays ?? 10))
-  const swapDir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
-  /** chal 是否比 inc「好」超過相對門檻。 */
-  const betterBy = (chal: number, inc: number): boolean =>
-    swapDir * (chal - inc) >= Math.max(1e-12, Math.abs(inc) * swapMargin)
 
   const applyRebalance = (
     target: Map<string, number>,
@@ -616,30 +646,22 @@ export function runBacktest(
     } else if (swapOn && !pending && regimeMap.get(row.date) !== 'bear') {
       // 非排程日的動能換股檢查
       const held = [...weights].filter(([c, w]) => w > 1e-6 && c !== INVERSE_CODE).map(([c]) => c)
-      const target = held.length ? targetWeights(row, cfg) : new Map<string, number>()
-      const targetCodes = new Set(target.keys())
-      const incumbents = held.filter((c) => !targetCodes.has(c))
-      const challengers = [...targetCodes].filter((c) => (weights.get(c) ?? 0) <= 1e-6)
-      const fval = (c: string): number | null => {
-        const s = row.stocks.find((x) => x.code === c)
-        return s ? histValue(s, cfg.factor) : null
-      }
-      const heldLongEnough = incumbents.every((c) => {
-        const e = entry.get(c)
-        return e != null && i - e.idx >= swapMinHold
-      })
-      if (incumbents.length && challengers.length && heldLongEnough) {
-        const incVals = incumbents.map(fval).filter((v): v is number => v != null)
-        const worstInc = incVals.length
-          ? incVals.reduce((a, b) => (swapDir * (a - b) < 0 ? a : b))
-          : null
-        const beats =
-          worstInc != null &&
-          challengers.some((c) => {
-            const cv = fval(c)
-            return cv != null && betterBy(cv, worstInc)
-          })
-        if (beats) {
+      if (held.length) {
+        const target = targetWeights(row, cfg)
+        const swap = shouldSwap(
+          cfg,
+          [...target.keys()],
+          held,
+          (c) => {
+            const s = row.stocks.find((x) => x.code === c)
+            return s ? histValue(s, cfg.factor) : null
+          },
+          (c) => {
+            const e = entry.get(c)
+            return e ? i - e.idx : 0
+          },
+        )
+        if (swap) {
           pending = { target, applyAt: i + lag, signalDate: row.date }
           if (lag === 0) {
             applyRebalance(target, row.date, row.date, adj, i)

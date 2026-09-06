@@ -14,6 +14,7 @@ import {
   nextRebalanceDate,
   rankTargets,
   regimeByDate,
+  shouldSwap,
   type BacktestConfig,
 } from '../backtest/engine'
 
@@ -70,8 +71,10 @@ export interface OperatorReport {
   regime: 'bull' | 'bear'
   /** 與前一交易日不同才有值：前一交易日的多空 */
   regimeChangedFrom: 'bull' | 'bear' | null
-  /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股 */
+  /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股（排程日 or 動能換股觸發） */
   isSignalDay: boolean
+  /** 非排程日、但動能換股規則觸發了 */
+  swapSignal: boolean
   /** asOfDate 之後的下一個台股交易日 */
   nextTradingDay: string
   nextRebalanceDate: string
@@ -107,6 +110,9 @@ function strategySummary(plan: OperatorPlan, factorLabel: string): string {
             ? `跌破 ${s.stopMaDays ?? 20} 日均線停損`
             : `固定停損 ${s.stopPct}%`
     parts.push(s.stopExecNext ? `${label}（隔日出場）` : label)
+  }
+  if (s.swapOnBetter) {
+    parts.push(`動能換股（高出 ${s.swapMargin}%、最短持有 ${s.swapMinHoldDays} 交易日）`)
   }
   if (s.regime !== 'off') {
     parts.push(
@@ -148,7 +154,7 @@ export function buildOperatorReport(
   const prevRegime = prevRow ? (regimeMap.get(prevRow.date) ?? 'bull') : null
   const regimeChangedFrom = prevRegime && prevRegime !== regime ? prevRegime : null
 
-  const isSignalDay = isRebalanceDay(
+  const isRebalDay = isRebalanceDay(
     rows.map((r) => r.date),
     lastRow.date,
     cfg.rebalance,
@@ -178,6 +184,30 @@ export function buildOperatorReport(
     weight: t.weight,
     price: px(t.code),
   }))
+
+  // 動能換股：非排程日也可能因為挑戰者反超而觸發換股
+  const factorOf = (code: string): number | null => {
+    const s = lastRow.stocks.find((x) => x.code === code)
+    if (!s) return null
+    const v = (s as Record<string, unknown>)[METRICS[cfg.factor].field]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+  const heldDays = (code: string): number => {
+    const h = plan.holdings.find((x) => x.code === code)
+    return h ? rows.filter((r) => r.date > h.entryDate && r.date <= lastRow.date).length : 0
+  }
+  const swapSignal =
+    regime !== 'bear' &&
+    !isRebalDay &&
+    plan.holdings.length > 0 &&
+    shouldSwap(
+      cfg,
+      rawTargets.map((t) => t.code),
+      plan.holdings.map((h) => h.code),
+      factorOf,
+      heldDays,
+    )
+  const isSignalDay = isRebalDay || swapSignal
 
   const stopFrac = (plan.strategy.stopPct ?? 0) / 100
   const maDays = Math.max(2, Math.round(plan.strategy.stopMaDays ?? 20))
@@ -272,6 +302,7 @@ export function buildOperatorReport(
     regime,
     regimeChangedFrom,
     isSignalDay,
+    swapSignal,
     nextTradingDay: nextTradingDay(lastRow.date, holidays),
     nextRebalanceDate: nextRebalanceDate(
       lastRow.date,

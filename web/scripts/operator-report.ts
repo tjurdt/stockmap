@@ -108,7 +108,9 @@ function textOf(r: OperatorReport): string {
   )
   L.push(
     r.isSignalDay
-      ? `${r.asOfDate} 是換股訊號日 → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
+      ? `${r.asOfDate} 是換股訊號日${
+          r.swapSignal ? '（動能換股觸發）' : ''
+        } → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
       : `今天不是換股日；下次換股約 ${r.nextRebalanceDate}。在那之前抱著不動、只看停損。`,
   )
   L.push('')
@@ -186,7 +188,9 @@ function htmlOf(r: OperatorReport): string {
     (r.bearInverse ? '<br>空頭策略：手上放元大台灣50反1（00632R）' : '') +
     '<br>' +
     (r.isSignalDay
-      ? `<b>${r.asOfDate} 是換股訊號日</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
+      ? `<b>${r.asOfDate} 是換股訊號日${
+          r.swapSignal ? '（動能換股觸發）' : ''
+        }</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
       : `今天不是換股日；下次換股約 <b>${r.nextRebalanceDate}</b>。在那之前抱著不動、只看停損。`)
   p.push(box(r.regime === 'bear' ? '#fdecea' : '#eef7f0', regimeTxt))
 
