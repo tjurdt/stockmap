@@ -13,7 +13,7 @@ import { METRICS, type MetricKey } from '../../lib/metrics'
 
 export type Rebalance = 'W' | 'M'
 export type Weighting = 'equal' | 'mcap'
-export type StopType = 'none' | 'fixed' | 'trailing'
+export type StopType = 'none' | 'fixed' | 'trailing' | 'daily' | 'ma'
 export type RegimeIndicator = 'off' | 'ma' | 'mom'
 
 /** 可當排名因子的欄位（history jsonl 有、且排名有意義的）。 */
@@ -41,11 +41,28 @@ export interface BacktestConfig {
   execLagDays?: number
   /**
    * 停損。none = 關（預設）。
-   * fixed：個股自買進日跌超過 stopPct% 就當日出場、持有現金到下次再平衡。
+   * fixed：個股自買進日跌超過 stopPct% 就出場、持有現金到下次再平衡。
    * trailing：從買進後的最高點回落超過 stopPct% 就出場。
+   * daily：單一交易日還原報酬 <= -stopPct% 就出場。
+   * ma：當日還原收盤跌破自身 stopMaDays 日均線就出場（不看 stopPct）。
    */
   stopType?: StopType
   stopPct?: number
+  /** stopType='ma' 的均線天數（預設 20）。 */
+  stopMaDays?: number
+  /**
+   * 停損成交時點。false（預設）= 觸發當日收盤即出場（close-to-close，不看盤中低點）。
+   * true = 觸發後隔一個交易日收盤才出場（貼近實務：收盤後才知道破線）。
+   */
+  stopExecNext?: boolean
+  /**
+   * 動能換股：非排程換股日也監看排名，一有池內未持有的股票因子明顯優於手上最弱一檔就換。
+   * swapMargin：挑戰者的因子值需比最弱持股「好」超過此 %（相對值）。
+   * swapMinHoldDays：每檔進場後至少持有 N 個交易日才可被換掉（防抖）。
+   */
+  swapOnBetter?: boolean
+  swapMargin?: number
+  swapMinHoldDays?: number
   /**
    * 多空環境過濾（用加權報酬指數判斷）。off = 關（預設）。
    * ma：指數在自身 regimeDays 日均線之上 = 多頭，之下 = 空頭。
@@ -234,6 +251,42 @@ export function rankTargets(
     .sort((a, b) => dir * (a.factor - b.factor))
 }
 
+/**
+ * 動能換股決策（純函式，回測引擎與操作訊號共用）。
+ * 當日 target 排名內有「未持有、且因子明顯優於手上最弱一檔」的挑戰者，
+ * 且所有要被換掉的持股都已過最短持有天數 → 回 true。
+ *
+ * @param targetCodes 當日排名的目標持股
+ * @param heldCodes   目前實際持股
+ * @param factorOf    code → 當日因子值（null = 無資料）
+ * @param heldDays    code → 已持有的交易日數
+ */
+export function shouldSwap(
+  cfg: BacktestConfig,
+  targetCodes: string[],
+  heldCodes: string[],
+  factorOf: (code: string) => number | null,
+  heldDays: (code: string) => number,
+): boolean {
+  if (!cfg.swapOnBetter) return false
+  const margin = Math.max(0, (cfg.swapMargin ?? 15) / 100)
+  const minHold = Math.max(0, Math.round(cfg.swapMinHoldDays ?? 10))
+  const dir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
+  const tset = new Set(targetCodes)
+  const hset = new Set(heldCodes)
+  const incumbents = heldCodes.filter((c) => !tset.has(c))
+  const challengers = targetCodes.filter((c) => !hset.has(c))
+  if (!incumbents.length || !challengers.length) return false
+  if (!incumbents.every((c) => heldDays(c) >= minHold)) return false
+  const incVals = incumbents.map(factorOf).filter((v): v is number => v != null)
+  if (!incVals.length) return false
+  const worstInc = incVals.reduce((a, b) => (dir * (a - b) < 0 ? a : b))
+  return challengers.some((c) => {
+    const cv = factorOf(c)
+    return cv != null && dir * (cv - worstInc) >= Math.max(1e-12, Math.abs(worstInc) * margin)
+  })
+}
+
 function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number> {
   const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
   const inPool = new Set(poolCodes(row, cfg.poolTopN)) // 當日市值前 poolTopN 大
@@ -306,6 +359,25 @@ function drift(
     grown.set(code, (w * (1 + (rets.get(code) ?? 0))) / (1 + r))
   }
   return grown // 未加總到 1 的部分 = 現金
+}
+
+/** 某代號在 rows[i] 為止、近 `days` 個交易日還原收盤的均值（資料不足 → 現有的平均，全缺 → null）。 */
+export function maForCode(
+  rows: HistoryRow[],
+  i: number,
+  code: string,
+  days: number,
+): number | null {
+  let sum = 0
+  let n = 0
+  for (let k = Math.max(0, i - Math.max(1, days) + 1); k <= i; k++) {
+    const s = rows[k]?.stocks.find((x) => x.code === code)
+    if (s?.adjClose != null && s.adjClose > 0) {
+      sum += s.adjClose
+      n++
+    }
+  }
+  return n > 0 ? sum / n : null
 }
 
 /** row → {code: adjClose} */
@@ -425,6 +497,10 @@ export function runBacktest(
   const lag = Math.max(0, Math.round(cfg.execLagDays ?? 1))
   const stopType = cfg.stopType ?? 'none'
   const stopFrac = (cfg.stopPct ?? 0) / 100
+  const stopMaDays = Math.max(2, Math.round(cfg.stopMaDays ?? 20))
+  const stopExecNext = cfg.stopExecNext === true
+  /** stopExecNext 時：偵測到破損、待下一交易日收盤才出場的代號。 */
+  const pendingStops = new Set<string>()
   const immediateExit = (cfg.regime ?? 'off') !== 'off' && cfg.regimeExit === 'immediate'
   const bearInverse = (cfg.regime ?? 'off') !== 'off' && cfg.bearHolding === 'inverse'
   const invRet = bearInverse ? inverseReturns(baselines) : new Map<string, number>()
@@ -433,15 +509,19 @@ export function runBacktest(
     bearInverse && invRet.has(d) ? new Map([[INVERSE_CODE, 1]]) : new Map<string, number>()
   let inverseDays = 0
   let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
-  // 每檔進場後的參考 adjClose（買進日）與波段高點
-  const entry = new Map<string, { in: number; peak: number }>()
+  // 每檔進場後的參考 adjClose（買進日）、波段高點、進場那天的 row index（給最短持有天數）
+  const entry = new Map<string, { in: number; peak: number; idx: number }>()
   const cost1 = cfg.costBps / 1e4
+
+  // 動能換股：一有池內未持有的股票、因子明顯優於手上最弱一檔就換（門檻 + 最短持有兩道閘）
+  const swapOn = cfg.swapOnBetter === true
 
   const applyRebalance = (
     target: Map<string, number>,
     tradeDate: string,
     signalDate: string,
     adj: Map<string, number>,
+    atIdx: number,
   ) => {
     const to = turnoverOf(weights, target)
     turnovers.push(to)
@@ -450,7 +530,7 @@ export function runBacktest(
     for (const c of target.keys()) {
       if (!entry.has(c)) {
         const p = adj.get(c) ?? 0
-        entry.set(c, { in: p, peak: p })
+        entry.set(c, { in: p, peak: p, idx: atIdx })
       }
     }
     for (const c of entry.keys()) if (!target.has(c)) entry.delete(c)
@@ -477,16 +557,45 @@ export function runBacktest(
         bench *= 1 + poolRets.reduce((a, b) => a + b, 0) / poolRets.length
       }
 
+      // 昨天偵測到、今天收盤才出場的停損（stopExecNext）
+      if (pendingStops.size) {
+        for (const c of pendingStops) {
+          const w = weights.get(c) ?? 0
+          if (w > 0 && c !== INVERSE_CODE) {
+            eq *= 1 - cost1 * w
+            weights.set(c, 0)
+            entry.delete(c)
+            stops++
+          }
+        }
+        pendingStops.clear()
+      }
+
       // 停損檢查（用當日 adjClose）
-      if (stopType !== 'none' && stopFrac > 0) {
+      const stopActive =
+        stopType !== 'none' && (stopType === 'ma' || stopType === 'daily' || stopFrac > 0)
+      if (stopActive) {
         for (const [c, w] of weights) {
           if (w <= 0 || c === INVERSE_CODE) continue // 避險部位不停損
           const e = entry.get(c)
           const px = adj.get(c)
           if (!e || px == null) continue
           e.peak = Math.max(e.peak, px)
-          const ref = stopType === 'trailing' ? e.peak : e.in
-          if (ref > 0 && px / ref - 1 <= -stopFrac) {
+          let hit = false
+          if (stopType === 'daily') {
+            const dr = rets.get(c)
+            hit = dr != null && dr <= -stopFrac
+          } else if (stopType === 'ma') {
+            const ma = maForCode(rows, i, c, stopMaDays)
+            hit = ma != null && px < ma
+          } else {
+            const ref = stopType === 'trailing' ? e.peak : e.in
+            hit = ref > 0 && px / ref - 1 <= -stopFrac
+          }
+          if (!hit) continue
+          if (stopExecNext) {
+            pendingStops.add(c)
+          } else {
             eq *= 1 - cost1 * w // 賣出成本
             weights.set(c, 0)
             entry.delete(c)
@@ -510,7 +619,7 @@ export function runBacktest(
         if (wantInverse && !inInverse && weights.size === 0) {
           eq *= 1 - cost1 // 買進反 1 成本
           weights = new Map([[INVERSE_CODE, 1]])
-          entry.set(INVERSE_CODE, { in: 0, peak: 0 })
+          entry.set(INVERSE_CODE, { in: 0, peak: 0, idx: i })
         } else if (!wantInverse && inInverse) {
           eq *= 1 - cost1 // 反 1 → 現金
           weights = new Map()
@@ -521,7 +630,7 @@ export function runBacktest(
 
     // 到了成交日 → 換股（空頭時就算 target 是空的也要換 = 出清持股）
     if (pending && i >= pending.applyAt) {
-      applyRebalance(pending.target, row.date, pending.signalDate, adj)
+      applyRebalance(pending.target, row.date, pending.signalDate, adj, i)
       pending = null
     }
 
@@ -531,8 +640,34 @@ export function runBacktest(
       const target = bear ? bearTarget(row.date) : targetWeights(row, cfg)
       pending = { target, applyAt: i + lag, signalDate: row.date }
       if (lag === 0) {
-        applyRebalance(target, row.date, row.date, adj)
+        applyRebalance(target, row.date, row.date, adj, i)
         pending = null
+      }
+    } else if (swapOn && !pending && regimeMap.get(row.date) !== 'bear') {
+      // 非排程日的動能換股檢查
+      const held = [...weights].filter(([c, w]) => w > 1e-6 && c !== INVERSE_CODE).map(([c]) => c)
+      if (held.length) {
+        const target = targetWeights(row, cfg)
+        const swap = shouldSwap(
+          cfg,
+          [...target.keys()],
+          held,
+          (c) => {
+            const s = row.stocks.find((x) => x.code === c)
+            return s ? histValue(s, cfg.factor) : null
+          },
+          (c) => {
+            const e = entry.get(c)
+            return e ? i - e.idx : 0
+          },
+        )
+        if (swap) {
+          pending = { target, applyAt: i + lag, signalDate: row.date }
+          if (lag === 0) {
+            applyRebalance(target, row.date, row.date, adj, i)
+            pending = null
+          }
+        }
       }
     }
 

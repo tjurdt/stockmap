@@ -14,6 +14,7 @@ import {
   nextRebalanceDate,
   rankTargets,
   regimeByDate,
+  shouldSwap,
   type BacktestConfig,
 } from '../backtest/engine'
 
@@ -26,8 +27,8 @@ export interface TargetRow {
 }
 
 export interface StopInfo {
-  type: 'fixed' | 'trailing'
-  /** 參考價：固定＝買進價；移動＝買進後最高（含當日收盤） */
+  type: 'fixed' | 'trailing' | 'daily' | 'ma'
+  /** 參考價：固定＝買進價；移動＝買進後最高（含當日收盤）；均線＝當日均線值；單日＝前一交易日收盤 */
   refPrice: number
   /** 現價相對參考價的漲跌幅（負值＝虧損） */
   pct: number
@@ -70,8 +71,10 @@ export interface OperatorReport {
   regime: 'bull' | 'bear'
   /** 與前一交易日不同才有值：前一交易日的多空 */
   regimeChangedFrom: 'bull' | 'bear' | null
-  /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股 */
+  /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股（排程日 or 動能換股觸發） */
   isSignalDay: boolean
+  /** 非排程日、但動能換股規則觸發了 */
+  swapSignal: boolean
   /** asOfDate 之後的下一個台股交易日 */
   nextTradingDay: string
   nextRebalanceDate: string
@@ -98,7 +101,18 @@ function strategySummary(plan: OperatorPlan, factorLabel: string): string {
     s.weighting === 'mcap' ? '市值權重' : '等權',
   ]
   if (s.stopType !== 'none') {
-    parts.push(`${s.stopType === 'trailing' ? '移動' : '固定'}停損 ${s.stopPct}%`)
+    const label =
+      s.stopType === 'trailing'
+        ? `移動停損 ${s.stopPct}%`
+        : s.stopType === 'daily'
+          ? `單日跌幅停損 ${s.stopPct}%`
+          : s.stopType === 'ma'
+            ? `跌破 ${s.stopMaDays ?? 20} 日均線停損`
+            : `固定停損 ${s.stopPct}%`
+    parts.push(s.stopExecNext ? `${label}（隔日出場）` : label)
+  }
+  if (s.swapOnBetter) {
+    parts.push(`動能換股（高出 ${s.swapMargin}%、最短持有 ${s.swapMinHoldDays} 交易日）`)
   }
   if (s.regime !== 'off') {
     parts.push(
@@ -140,7 +154,7 @@ export function buildOperatorReport(
   const prevRegime = prevRow ? (regimeMap.get(prevRow.date) ?? 'bull') : null
   const regimeChangedFrom = prevRegime && prevRegime !== regime ? prevRegime : null
 
-  const isSignalDay = isRebalanceDay(
+  const isRebalDay = isRebalanceDay(
     rows.map((r) => r.date),
     lastRow.date,
     cfg.rebalance,
@@ -171,23 +185,64 @@ export function buildOperatorReport(
     price: px(t.code),
   }))
 
+  // 動能換股：非排程日也可能因為挑戰者反超而觸發換股
+  const factorOf = (code: string): number | null => {
+    const s = lastRow.stocks.find((x) => x.code === code)
+    if (!s) return null
+    const v = (s as Record<string, unknown>)[METRICS[cfg.factor].field]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+  const heldDays = (code: string): number => {
+    const h = plan.holdings.find((x) => x.code === code)
+    return h ? rows.filter((r) => r.date > h.entryDate && r.date <= lastRow.date).length : 0
+  }
+  const swapSignal =
+    regime !== 'bear' &&
+    !isRebalDay &&
+    plan.holdings.length > 0 &&
+    shouldSwap(
+      cfg,
+      rawTargets.map((t) => t.code),
+      plan.holdings.map((h) => h.code),
+      factorOf,
+      heldDays,
+    )
+  const isSignalDay = isRebalDay || swapSignal
+
   const stopFrac = (plan.strategy.stopPct ?? 0) / 100
+  const maDays = Math.max(2, Math.round(plan.strategy.stopMaDays ?? 20))
+
+  /** 某代號近 n 個交易日收盤均值（含 lastRow）。 */
+  const maClose = (code: string, n: number): number | null => {
+    const closes: number[] = []
+    for (let k = rows.length - 1; k >= 0 && closes.length < n; k--) {
+      const s = rows[k]!.stocks.find((x) => x.code === code)
+      if (s?.close != null) closes.push(s.close)
+    }
+    return closes.length ? closes.reduce((a, b) => a + b, 0) / closes.length : null
+  }
+  /** 某代號前一個交易日收盤（給單日跌幅停損）。 */
+  const prevClose = (code: string): number | null =>
+    prevRow?.stocks.find((s) => s.code === code)?.close ?? null
+
   const stopOf = (code: string, entryPrice: number, entryDate: string): StopInfo | null => {
-    if (plan.strategy.stopType === 'none') return null
+    const type = plan.strategy.stopType
+    if (type === 'none') return null
     const now = px(code)
     if (now == null) return null
-    const refPrice =
-      plan.strategy.stopType === 'trailing'
-        ? Math.max(entryPrice, peakSince(code, entryDate))
-        : entryPrice
+
+    let refPrice: number | null
+    if (type === 'trailing') refPrice = Math.max(entryPrice, peakSince(code, entryDate))
+    else if (type === 'ma') refPrice = maClose(code, maDays)
+    else if (type === 'daily') refPrice = prevClose(code)
+    else refPrice = entryPrice
+    if (refPrice == null || refPrice <= 0) return null
+
     const pct = now / refPrice - 1
-    return {
-      type: plan.strategy.stopType,
-      refPrice,
-      pct,
-      hit: pct <= -stopFrac,
-      room: pct + stopFrac,
-    }
+    // ma：現價低於均線就出場（不看 stopPct）；其餘：跌幅超過 stopPct
+    const hit = type === 'ma' ? pct < 0 : pct <= -stopFrac
+    const room = type === 'ma' ? pct : pct + stopFrac
+    return { type, refPrice, pct, hit, room }
   }
 
   const holdings: HoldingRow[] = plan.holdings.map((h) => {
@@ -247,6 +302,7 @@ export function buildOperatorReport(
     regime,
     regimeChangedFrom,
     isSignalDay,
+    swapSignal,
     nextTradingDay: nextTradingDay(lastRow.date, holidays),
     nextRebalanceDate: nextRebalanceDate(
       lastRow.date,

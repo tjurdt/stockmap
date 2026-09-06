@@ -14,6 +14,11 @@ export type StrategyParams = Required<
     | 'execLagDays'
     | 'stopType'
     | 'stopPct'
+    | 'stopMaDays'
+    | 'stopExecNext'
+    | 'swapOnBetter'
+    | 'swapMargin'
+    | 'swapMinHoldDays'
     | 'regime'
     | 'regimeDays'
     | 'regimeExit'
@@ -31,6 +36,11 @@ export const DEFAULT_PARAMS: StrategyParams = {
   execLagDays: 1,
   stopType: 'none',
   stopPct: 20,
+  stopMaDays: 20,
+  stopExecNext: false,
+  swapOnBetter: false,
+  swapMargin: 15,
+  swapMinHoldDays: 10,
   regime: 'off',
   regimeDays: 200,
   regimeExit: 'rebalance',
@@ -48,6 +58,11 @@ export function encodeParams(p: StrategyParams): string {
     lag: String(p.execLagDays),
     stop: p.stopType,
     stopPct: String(p.stopPct),
+    stopMaDays: String(p.stopMaDays),
+    stopExecNext: p.stopExecNext ? '1' : '0',
+    swap: p.swapOnBetter ? '1' : '0',
+    swapMargin: String(p.swapMargin),
+    swapHold: String(p.swapMinHoldDays),
     regime: p.regime,
     regimeDays: String(p.regimeDays),
     regimeExit: p.regimeExit,
@@ -61,6 +76,12 @@ export function decodeParams(qs: string): StrategyParams {
     const v = Number(q.get(k))
     return Number.isFinite(v) && v > 0 ? v : d
   }
+  const numNonNeg = (k: string, d: number) => {
+    const raw = q.get(k)
+    if (raw == null) return d
+    const v = Number(raw)
+    return Number.isFinite(v) && v >= 0 ? v : d
+  }
   return {
     factor: (q.get('factor') as MetricKey) || DEFAULT_PARAMS.factor,
     topN: num('topN', DEFAULT_PARAMS.topN),
@@ -69,11 +90,17 @@ export function decodeParams(qs: string): StrategyParams {
     rebalanceDay: Math.min(23, Math.max(1, num('rebalDay', DEFAULT_PARAMS.rebalanceDay))),
     weighting: q.get('weight') === 'mcap' ? 'mcap' : 'equal',
     execLagDays: q.get('lag') === '0' ? 0 : 1,
-    stopType:
-      q.get('stop') === 'fixed' || q.get('stop') === 'trailing'
-        ? (q.get('stop') as 'fixed' | 'trailing')
-        : 'none',
+    stopType: (['fixed', 'trailing', 'daily', 'ma'] as const).includes(
+      q.get('stop') as 'fixed' | 'trailing' | 'daily' | 'ma',
+    )
+      ? (q.get('stop') as 'fixed' | 'trailing' | 'daily' | 'ma')
+      : 'none',
     stopPct: num('stopPct', DEFAULT_PARAMS.stopPct),
+    stopMaDays: num('stopMaDays', DEFAULT_PARAMS.stopMaDays),
+    stopExecNext: q.get('stopExecNext') === '1',
+    swapOnBetter: q.get('swap') === '1',
+    swapMargin: numNonNeg('swapMargin', DEFAULT_PARAMS.swapMargin),
+    swapMinHoldDays: numNonNeg('swapHold', DEFAULT_PARAMS.swapMinHoldDays),
     regime:
       q.get('regime') === 'ma' || q.get('regime') === 'mom'
         ? (q.get('regime') as 'ma' | 'mom')

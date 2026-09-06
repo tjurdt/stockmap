@@ -10,7 +10,13 @@ import { loadCalendar } from '../../lib/calendar'
 import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import { useHoldings, type Position } from '../../lib/portfolio'
-import { isRebalanceDay, nextRebalanceDate, rankTargets, regimeByDate } from '../backtest/engine'
+import {
+  isRebalanceDay,
+  nextRebalanceDate,
+  rankTargets,
+  regimeByDate,
+  shouldSwap,
+} from '../backtest/engine'
 import { decodeParams } from '../backtest/strategyParams'
 import { HoldingsEditor } from './HoldingsEditor'
 import styles from './signal.module.css'
@@ -62,8 +68,38 @@ export function SignalPage() {
       }
       return mx
     }
+    // 某代號近 n 個交易日收盤均值（跌破均線停損）
+    const maClose = (code: string, n: number): number | null => {
+      const closes: number[] = []
+      for (let k = rows.length - 1; k >= 0 && closes.length < n; k--) {
+        const s = rows[k]!.stocks.find((x) => x.code === code)
+        if (s?.close != null) closes.push(s.close)
+      }
+      return closes.length ? closes.reduce((a, b) => a + b, 0) / closes.length : null
+    }
+    const prevClose = (code: string): number | null =>
+      prevRow?.stocks.find((s) => s.code === code)?.close ?? null
+    const factorOf = (code: string): number | null => {
+      const s = lastRow.stocks.find((x) => x.code === code)
+      if (!s) return null
+      const v = (s as Record<string, unknown>)[METRICS[p.factor].field]
+      return typeof v === 'number' && Number.isFinite(v) ? v : null
+    }
+    const heldTradingDays = (from: string): number =>
+      rows.filter((r) => r.date > from && r.date <= lastRow.date).length
     const nextRebal = nextRebalanceDate(lastRow.date, p.rebalance, p.rebalanceDay, holidays)
-    return { regime, targets, isRebalDay, peakSince, lastDate: lastRow.date, nextRebal }
+    return {
+      regime,
+      targets,
+      isRebalDay,
+      peakSince,
+      maClose,
+      prevClose,
+      factorOf,
+      heldTradingDays,
+      lastDate: lastRow.date,
+      nextRebal,
+    }
   }, [lastRow, prevRow, rows, bl, p, holidays])
 
   const codes = useMemo(
@@ -95,13 +131,43 @@ export function SignalPage() {
     if (p.stopType === 'none') return null
     const now = px(h.code)
     if (now == null) return null
-    const ref =
-      p.stopType === 'trailing'
-        ? Math.max(h.entryPrice, model.peakSince(h.code, h.entryDate))
-        : h.entryPrice
+    let ref: number | null
+    if (p.stopType === 'trailing')
+      ref = Math.max(h.entryPrice, model.peakSince(h.code, h.entryDate))
+    else if (p.stopType === 'ma') ref = model.maClose(h.code, Math.max(2, p.stopMaDays))
+    else if (p.stopType === 'daily') ref = model.prevClose(h.code)
+    else ref = h.entryPrice
+    if (ref == null || ref <= 0) return null
     const pct = now / ref - 1
-    return { pct, hit: pct <= -p.stopPct / 100 }
+    return { pct, hit: p.stopType === 'ma' ? pct < 0 : pct <= -p.stopPct / 100 }
   }
+
+  const swapSignal =
+    p.swapOnBetter &&
+    model.regime !== 'bear' &&
+    !model.isRebalDay &&
+    holdings.length > 0 &&
+    shouldSwap(
+      { ...p, costBps: 0 },
+      model.targets.map((t) => t.code),
+      holdings.map((h) => h.code),
+      model.factorOf,
+      (c) => {
+        const h = holdings.find((x) => x.code === c)
+        return h ? model.heldTradingDays(h.entryDate) : 0
+      },
+    )
+  const isSignalDay = model.isRebalDay || swapSignal
+
+  const stopLabel =
+    p.stopType === 'none'
+      ? '關'
+      : p.stopType === 'ma'
+        ? `${p.stopMaDays} 日均線`
+        : p.stopType === 'daily'
+          ? `單日 -${p.stopPct}%`
+          : `${p.stopPct}%`
+  const stopExecNote = p.stopExecNext ? '（隔一交易日收盤出場）' : '（觸發當日收盤出場）'
 
   return (
     <Layout asOf={isLive ? '盤中報價（約 15 分鐘延遲）' : `依 ${model.lastDate} 收盤`}>
@@ -110,7 +176,15 @@ export function SignalPage() {
         {p.rebalance === 'M' ? '每月' : '每週'}再平衡 ·{' '}
         {p.weighting === 'mcap' ? '市值權重' : '等權'}
         {p.stopType !== 'none' &&
-          ` · ${p.stopType === 'trailing' ? '移動' : '固定'}停損 ${p.stopPct}%`}
+          ` · ${
+            p.stopType === 'trailing'
+              ? '移動'
+              : p.stopType === 'daily'
+                ? '單日跌幅'
+                : p.stopType === 'ma'
+                  ? '跌破均線'
+                  : '固定'
+          }停損（${stopLabel}）${p.stopExecNext ? '隔日出場' : ''}`}
         {p.regime !== 'off' &&
           ` · 多空過濾（${p.regime === 'ma' ? '均線' : '動能'} ${p.regimeDays} 日，${
             p.regimeExit === 'immediate' ? '轉空立刻清空' : '換股日才空手'
@@ -136,9 +210,13 @@ export function SignalPage() {
           <p>
             {/* 已在上面講清楚 */}下次進場：換股日（約 {model.nextRebal}）且大盤轉多。
           </p>
-        ) : model.isRebalDay ? (
+        ) : isSignalDay ? (
           <p>
-            <b>{model.lastDate} 是換股訊號日</b> → 下一個交易日照「明天的動作」換股。
+            <b>
+              {model.lastDate} 是換股訊號日
+              {swapSignal && !model.isRebalDay ? '（動能換股觸發）' : ''}
+            </b>{' '}
+            → 下一個交易日照「明天的動作」換股。
           </p>
         ) : (
           <p>
@@ -204,7 +282,7 @@ export function SignalPage() {
                 <th>買進價</th>
                 <th>現價</th>
                 <th>損益</th>
-                <th>停損（{p.stopType === 'none' ? '關' : `${p.stopPct}%`}）</th>
+                <th>停損（{stopLabel}）</th>
               </tr>
             </thead>
             <tbody>
@@ -228,7 +306,9 @@ export function SignalPage() {
                         ? '—'
                         : st.hit
                           ? `已觸發（${(st.pct * 100).toFixed(1)}%）→ 出場`
-                          : `距停損 ${((st.pct + p.stopPct / 100) * 100).toFixed(1)}%`}
+                          : p.stopType === 'ma'
+                            ? `高於均線 ${(st.pct * 100).toFixed(1)}%`
+                            : `距停損 ${((st.pct + p.stopPct / 100) * 100).toFixed(1)}%`}
                     </td>
                   </tr>
                 )
@@ -247,7 +327,10 @@ export function SignalPage() {
               .map((h) => (
                 <li key={`stop${h.code}`}>
                   <span className={styles.sell}>停損</span> {h.code} {names.get(h.code) ?? ''}
-                  　已跌破 {p.stopPct}% → 不用等換股日，<b>今天/明天就出場</b>、持有現金至下次再平衡
+                  　已觸發{p.stopType === 'ma'
+                    ? `跌破 ${p.stopMaDays} 日均線`
+                    : `（${stopLabel}）`}{' '}
+                  {stopExecNote} → 不用等換股日，<b>依上述時點出場</b>、持有現金至下次再平衡
                 </li>
               ))}
           </ul>
@@ -256,9 +339,11 @@ export function SignalPage() {
 
       <section>
         <h3>
-          {model.isRebalDay ? '明天的動作（換股日）' : `下次換股日（約 ${model.nextRebal}）要做的`}
+          {isSignalDay
+            ? `明天的動作（${swapSignal && !model.isRebalDay ? '動能換股' : '換股日'}）`
+            : `下次換股日（約 ${model.nextRebal}）要做的`}
         </h3>
-        {!model.isRebalDay && (
+        {!isSignalDay && (
           <p className={styles.sub}>
             預覽而已 —— 到 {model.nextRebal} 這份清單會依當時動能重算，不要現在就照這個換。
           </p>

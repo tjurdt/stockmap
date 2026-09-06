@@ -26,7 +26,9 @@
       "additionalProperties": false,
       "required": [
         "factor", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
-        "execLagDays", "stopType", "stopPct", "regime", "regimeDays", "regimeExit", "bearHolding"
+        "execLagDays", "stopType", "stopPct", "stopMaDays", "stopExecNext",
+        "swapOnBetter", "swapMargin", "swapMinHoldDays",
+        "regime", "regimeDays", "regimeExit", "bearHolding"
       ],
       "properties": {
         "factor": {
@@ -44,8 +46,30 @@
         },
         "weighting": { "enum": ["equal", "mcap"], "description": "等權 / 市值權重" },
         "execLagDays": { "enum": [0, 1], "description": "訊號日到成交隔幾個交易日" },
-        "stopType": { "enum": ["none", "fixed", "trailing"], "description": "停損型態" },
-        "stopPct": { "type": "number", "exclusiveMinimum": 0, "description": "停損百分比" },
+        "stopType": {
+          "enum": ["none", "fixed", "trailing", "daily", "ma"],
+          "description": "停損型態：固定 / 移動 / 單日跌幅 / 跌破均線"
+        },
+        "stopPct": { "type": "number", "exclusiveMinimum": 0, "description": "停損百分比（ma 型態不用）" },
+        "stopMaDays": { "type": "integer", "minimum": 1, "description": "stopType=ma 的均線天數" },
+        "stopExecNext": {
+          "type": "boolean",
+          "description": "停損成交時點：false=觸發當日收盤、true=隔一交易日收盤"
+        },
+        "swapOnBetter": {
+          "type": "boolean",
+          "description": "動能換股：非排程日也監看排名，池內未持有股票因子明顯優於最弱持股就換"
+        },
+        "swapMargin": {
+          "type": "number",
+          "minimum": 0,
+          "description": "動能換股門檻：挑戰者因子需比最弱持股好過此 %（相對值）"
+        },
+        "swapMinHoldDays": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "動能換股：每檔進場後至少持有 N 個交易日才可被換掉"
+        },
         "regime": { "enum": ["off", "ma", "mom"], "description": "大盤多空過濾指標" },
         "regimeDays": { "type": "integer", "minimum": 1, "description": "多空指標回看天數" },
         "regimeExit": {
