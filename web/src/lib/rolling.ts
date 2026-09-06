@@ -2,6 +2,7 @@
  * 滾動視窗報酬 —— 從一條權益曲線切出「每一個為期 N 個月」的區間報酬，看策略的
  * 「連續獲利能力」（不同進場時點的表現分布）。純函式。
  */
+import { addMonthsISO, mean, quantile, stdev } from './stats'
 
 export interface RollingWindow {
   /** 視窗起始月 YYYY-MM */
@@ -49,6 +50,122 @@ export function rollingWindowReturns(
     out.push({ start: m0, end: lastMonth, ret: ratio(equity), benchRet: ratio(benchmark) })
   }
   return out
+}
+
+/**
+ * 逐交易日起點的持有結果分布 —— 「隨便挑一天進場、抱滿 N 個月」的所有可能結果。
+ * 從單一 equity 曲線切片（重疊視窗，非獨立樣本），拿來看分布形狀 / 中位數 / 期望值。
+ *
+ * @param refs  額外對照序列（已對齊 dates、正規化到起點）；key = 顯示名（如「大盤」「0050」）。
+ *              缺值以 null 表示，該視窗就不列入該對照的統計。
+ */
+export interface WindowOutcome {
+  /** 進場日 YYYY-MM-DD */
+  start: string
+  /** 出場日 YYYY-MM-DD */
+  end: string
+  ret: number
+  benchRet: number
+  /** 每個對照序列同期報酬（該序列在起點或終點缺值 → null） */
+  refRets: Record<string, number | null>
+}
+
+export function dailyWindowOutcomes(
+  dates: string[],
+  equity: number[],
+  benchmark: number[],
+  windowMonths: number,
+  refs: Record<string, (number | null)[] | null> = {},
+): WindowOutcome[] {
+  if (dates.length < 2 || windowMonths < 1) return []
+  const out: WindowOutcome[] = []
+  const refKeys = Object.keys(refs)
+
+  // 對每個起點，二分找「不晚於 start + windowMonths 個月」的最後一個交易日當出場日
+  for (let i = 0; i < dates.length; i++) {
+    const cutoff = addMonthsISO(dates[i]!, windowMonths)
+    if (dates[dates.length - 1]! < cutoff) break // 更晚的起點也湊不滿一個視窗
+    let lo = i
+    let hi = dates.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1
+      if (dates[mid]! <= cutoff) lo = mid
+      else hi = mid - 1
+    }
+    const endIdx = lo
+    if (endIdx <= i) continue
+    const ratio = (arr: number[] | (number | null)[]): number | null => {
+      const a = arr[i]
+      const b = arr[endIdx]
+      return a != null && a > 0 && b != null ? b / a - 1 : null
+    }
+    const refRets: Record<string, number | null> = {}
+    for (const k of refKeys) refRets[k] = refs[k] ? ratio(refs[k]!) : null
+    out.push({
+      start: dates[i]!,
+      end: dates[endIdx]!,
+      ret: ratio(equity) ?? 0,
+      benchRet: ratio(benchmark) ?? 0,
+      refRets,
+    })
+  }
+  return out
+}
+
+export interface OutcomeSummary {
+  n: number
+  median: number
+  /** 期望值（平均） */
+  mean: number
+  stdev: number
+  positivePct: number
+  /** 中位數超額（相對「選股池等權」基準） */
+  medianExcessBench: number
+  meanExcessBench: number
+  /** 每個對照序列的中位數超額（策略中位數 − 該對照中位數，只算兩邊都有值的視窗） */
+  medianExcess: Record<string, number>
+}
+
+export function summarizeOutcomes(rows: WindowOutcome[]): OutcomeSummary {
+  if (rows.length === 0) {
+    return {
+      n: 0,
+      median: 0,
+      mean: 0,
+      stdev: 0,
+      positivePct: 0,
+      medianExcessBench: 0,
+      meanExcessBench: 0,
+      medianExcess: {},
+    }
+  }
+  const rets = rows.map((r) => r.ret)
+  const excessBench = rows.map((r) => r.ret - r.benchRet)
+  const medianExcess: Record<string, number> = {}
+  for (const k of Object.keys(rows[0]!.refRets)) {
+    const paired = rows.filter((r) => r.refRets[k] != null)
+    if (paired.length) {
+      medianExcess[k] =
+        quantile(
+          paired.map((r) => r.ret),
+          0.5,
+        ) -
+        quantile(
+          paired.map((r) => r.refRets[k]!),
+          0.5,
+        )
+    }
+  }
+  return {
+    n: rows.length,
+    median: quantile(rets, 0.5),
+    mean: mean(rets),
+    stdev: stdev(rets),
+    positivePct: rows.filter((r) => r.ret > 0).length / rows.length,
+    medianExcessBench: quantile(excessBench, 0.5),
+    meanExcessBench: mean(excessBench),
+    medianExcess,
+  }
 }
 
 export interface RollingSummary {

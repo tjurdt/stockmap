@@ -11,13 +11,19 @@ import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
-import { rollingWindowReturns, summarizeRolling } from '../../lib/rolling'
+import {
+  dailyWindowOutcomes,
+  rollingWindowReturns,
+  summarizeOutcomes,
+  summarizeRolling,
+} from '../../lib/rolling'
 import { CompareTable, type CompareRow } from './CompareTable'
 import { useLockedStrategies } from './compare'
 import { BACKTEST_FACTORS, poolAtDate, runBacktest, type BacktestConfig } from './engine'
 import { EquityChart } from './EquityChart'
 import { LockedBar } from './LockedBar'
 import { MethodNotes } from './MethodNotes'
+import { OutcomeHistogram } from './OutcomeHistogram'
 import { RollingChart } from './RollingChart'
 import { decodeParams, encodeParams, type StrategyParams } from './strategyParams'
 import styles from './backtest.module.css'
@@ -134,6 +140,23 @@ export function BacktestPage() {
     [fullResult, windowMonths],
   )
   const rollSummary = useMemo(() => summarizeRolling(rolling), [rolling])
+
+  // 報酬分布：逐交易日起點、抱滿 N 個月的所有結果（用完整歷史）
+  const [distMonths, setDistMonths] = useState(12)
+  const outcomes = useMemo(() => {
+    if (!fullResult) return []
+    return dailyWindowOutcomes(
+      fullResult.dates,
+      fullResult.equity,
+      fullResult.benchmark,
+      distMonths,
+      {
+        大盤: alignNormalized(blData, fullResult.dates, 'twiiTR'),
+        '0050': alignNormalized(blData, fullResult.dates, 'e0050'),
+      },
+    )
+  }, [fullResult, distMonths, blData])
+  const distSummary = useMemo(() => summarizeOutcomes(outcomes), [outcomes])
 
   const span = result?.dates.length ? `${result.dates[0]} ~ ${result.dates.at(-1)}` : ''
 
@@ -564,6 +587,74 @@ export function BacktestPage() {
                     />
                     <Stat label="視窗數" value={String(rollSummary.n)} />
                   </div>
+                </section>
+              )}
+
+              {outcomes.length > 1 && (
+                <section className={styles.rollSection}>
+                  <div className={styles.rollHead}>
+                    <h3>
+                      報酬分布{' '}
+                      <span className={styles.sub}>
+                        任一交易日進場、抱滿 N 個月的所有結果（{distSummary.n} 個起點）
+                      </span>
+                    </h3>
+                    <CycleField
+                      label="持有期"
+                      value={distMonths}
+                      options={WINDOW_OPTS}
+                      onChange={setDistMonths}
+                    />
+                  </div>
+                  <OutcomeHistogram
+                    returns={outcomes.map((o) => o.ret)}
+                    median={distSummary.median}
+                    mean={distSummary.mean}
+                  />
+                  <div className={styles.stats}>
+                    <Stat
+                      label="報酬中位數"
+                      value={pct(distSummary.median)}
+                      klass={cls(distSummary.median)}
+                    />
+                    <Stat
+                      label="期望值"
+                      value={pct(distSummary.mean)}
+                      klass={cls(distSummary.mean)}
+                    />
+                    <Stat
+                      label="成長為投入的"
+                      value={`${((1 + distSummary.median) * 100).toFixed(0)}%`}
+                    />
+                    <Stat label="標準差" value={pct(distSummary.stdev)} />
+                    <Stat
+                      label="正報酬比例"
+                      value={`${(distSummary.positivePct * 100).toFixed(0)}%`}
+                      klass={cls(distSummary.positivePct - 0.5)}
+                    />
+                    <Stat
+                      label="相對基準（中位）"
+                      value={pct(distSummary.medianExcessBench)}
+                      klass={cls(distSummary.medianExcessBench)}
+                    />
+                    {distSummary.medianExcess['大盤'] != null && (
+                      <Stat
+                        label="相對大盤（中位）"
+                        value={pct(distSummary.medianExcess['大盤'])}
+                        klass={cls(distSummary.medianExcess['大盤'])}
+                      />
+                    )}
+                    {distSummary.medianExcess['0050'] != null && (
+                      <Stat
+                        label="相對 0050（中位）"
+                        value={pct(distSummary.medianExcess['0050'])}
+                        klass={cls(distSummary.medianExcess['0050'])}
+                      />
+                    )}
+                  </div>
+                  <p className={styles.rollLegend}>
+                    重疊視窗、非獨立樣本，期望值與標準差僅供參考。詳見下方說明。
+                  </p>
                 </section>
               )}
 
