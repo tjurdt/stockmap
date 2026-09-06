@@ -56,6 +56,14 @@ export interface BacktestConfig {
    */
   stopExecNext?: boolean
   /**
+   * 動能換股：非排程換股日也監看排名，一有池內未持有的股票因子明顯優於手上最弱一檔就換。
+   * swapMargin：挑戰者的因子值需比最弱持股「好」超過此 %（相對值）。
+   * swapMinHoldDays：每檔進場後至少持有 N 個交易日才可被換掉（防抖）。
+   */
+  swapOnBetter?: boolean
+  swapMargin?: number
+  swapMinHoldDays?: number
+  /**
    * 多空環境過濾（用加權報酬指數判斷）。off = 關（預設）。
    * ma：指數在自身 regimeDays 日均線之上 = 多頭，之下 = 空頭。
    * mom：指數 regimeDays 日報酬率 > 0 = 多頭。
@@ -465,15 +473,25 @@ export function runBacktest(
     bearInverse && invRet.has(d) ? new Map([[INVERSE_CODE, 1]]) : new Map<string, number>()
   let inverseDays = 0
   let pending: { target: Map<string, number>; applyAt: number; signalDate: string } | null = null
-  // 每檔進場後的參考 adjClose（買進日）與波段高點
-  const entry = new Map<string, { in: number; peak: number }>()
+  // 每檔進場後的參考 adjClose（買進日）、波段高點、進場那天的 row index（給最短持有天數）
+  const entry = new Map<string, { in: number; peak: number; idx: number }>()
   const cost1 = cfg.costBps / 1e4
+
+  // 動能換股：一有池內未持有的股票、因子明顯優於手上最弱一檔就換（門檻 + 最短持有兩道閘）
+  const swapOn = cfg.swapOnBetter === true
+  const swapMargin = Math.max(0, (cfg.swapMargin ?? 15) / 100)
+  const swapMinHold = Math.max(0, Math.round(cfg.swapMinHoldDays ?? 10))
+  const swapDir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
+  /** chal 是否比 inc「好」超過相對門檻。 */
+  const betterBy = (chal: number, inc: number): boolean =>
+    swapDir * (chal - inc) >= Math.max(1e-12, Math.abs(inc) * swapMargin)
 
   const applyRebalance = (
     target: Map<string, number>,
     tradeDate: string,
     signalDate: string,
     adj: Map<string, number>,
+    atIdx: number,
   ) => {
     const to = turnoverOf(weights, target)
     turnovers.push(to)
@@ -482,7 +500,7 @@ export function runBacktest(
     for (const c of target.keys()) {
       if (!entry.has(c)) {
         const p = adj.get(c) ?? 0
-        entry.set(c, { in: p, peak: p })
+        entry.set(c, { in: p, peak: p, idx: atIdx })
       }
     }
     for (const c of entry.keys()) if (!target.has(c)) entry.delete(c)
@@ -571,7 +589,7 @@ export function runBacktest(
         if (wantInverse && !inInverse && weights.size === 0) {
           eq *= 1 - cost1 // 買進反 1 成本
           weights = new Map([[INVERSE_CODE, 1]])
-          entry.set(INVERSE_CODE, { in: 0, peak: 0 })
+          entry.set(INVERSE_CODE, { in: 0, peak: 0, idx: i })
         } else if (!wantInverse && inInverse) {
           eq *= 1 - cost1 // 反 1 → 現金
           weights = new Map()
@@ -582,7 +600,7 @@ export function runBacktest(
 
     // 到了成交日 → 換股（空頭時就算 target 是空的也要換 = 出清持股）
     if (pending && i >= pending.applyAt) {
-      applyRebalance(pending.target, row.date, pending.signalDate, adj)
+      applyRebalance(pending.target, row.date, pending.signalDate, adj, i)
       pending = null
     }
 
@@ -592,8 +610,42 @@ export function runBacktest(
       const target = bear ? bearTarget(row.date) : targetWeights(row, cfg)
       pending = { target, applyAt: i + lag, signalDate: row.date }
       if (lag === 0) {
-        applyRebalance(target, row.date, row.date, adj)
+        applyRebalance(target, row.date, row.date, adj, i)
         pending = null
+      }
+    } else if (swapOn && !pending && regimeMap.get(row.date) !== 'bear') {
+      // 非排程日的動能換股檢查
+      const held = [...weights].filter(([c, w]) => w > 1e-6 && c !== INVERSE_CODE).map(([c]) => c)
+      const target = held.length ? targetWeights(row, cfg) : new Map<string, number>()
+      const targetCodes = new Set(target.keys())
+      const incumbents = held.filter((c) => !targetCodes.has(c))
+      const challengers = [...targetCodes].filter((c) => (weights.get(c) ?? 0) <= 1e-6)
+      const fval = (c: string): number | null => {
+        const s = row.stocks.find((x) => x.code === c)
+        return s ? histValue(s, cfg.factor) : null
+      }
+      const heldLongEnough = incumbents.every((c) => {
+        const e = entry.get(c)
+        return e != null && i - e.idx >= swapMinHold
+      })
+      if (incumbents.length && challengers.length && heldLongEnough) {
+        const incVals = incumbents.map(fval).filter((v): v is number => v != null)
+        const worstInc = incVals.length
+          ? incVals.reduce((a, b) => (swapDir * (a - b) < 0 ? a : b))
+          : null
+        const beats =
+          worstInc != null &&
+          challengers.some((c) => {
+            const cv = fval(c)
+            return cv != null && betterBy(cv, worstInc)
+          })
+        if (beats) {
+          pending = { target, applyAt: i + lag, signalDate: row.date }
+          if (lag === 0) {
+            applyRebalance(target, row.date, row.date, adj, i)
+            pending = null
+          }
+        }
       }
     }
 

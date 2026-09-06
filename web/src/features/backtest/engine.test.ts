@@ -332,6 +332,70 @@ describe('runBacktest', () => {
     expect(inv.metrics.totalReturn).toBeGreaterThan(cash.metrics.totalReturn)
   })
 
+  describe('動能換股（swapOnBetter）', () => {
+    // 25 天全在 1 月（只有 1/1 是排程換股日）。A 價格持平，B 每天漲 2%。
+    // 前 7 天 A 動能高 → 買 A；第 8 天起 B 動能反超。
+    const build = (bMom: number) =>
+      Array.from({ length: 25 }, (_, i) =>
+        row(`2026-01-${String(i + 1).padStart(2, '0')}`, [
+          { code: '1111', adj: 100, f: i < 7 ? 50 : 20 },
+          { code: '2222', adj: 100 * 1.02 ** i, f: i < 7 ? 10 : bMom },
+        ]),
+      )
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      rebalanceDay: 1,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+    }
+
+    it('挑戰者動能明顯反超 + 已過最短持有 → 期間內換股', () => {
+      const off = runBacktest(build(100), base)
+      const on = runBacktest(build(100), {
+        ...base,
+        swapOnBetter: true,
+        swapMargin: 15,
+        swapMinHoldDays: 5,
+      })
+      expect(off.holdings.at(-1)!.codes).toEqual(['1111']) // 沒開 → 抱 A 到底
+      expect(off.metrics.totalReturn).toBeCloseTo(0, 2)
+      expect(on.holdings.at(-1)!.codes).toEqual(['2222']) // 開了 → 換到 B
+      expect(on.metrics.totalReturn).toBeGreaterThan(0.1) // 吃到 B 後段漲幅
+      expect(on.metrics.rebalances).toBeGreaterThan(off.metrics.rebalances)
+    })
+
+    it('門檻擋掉小幅反超', () => {
+      // B 動能只比 A（20）高一點點（21）→ 15% 門檻擋掉，0% 放行
+      const strict = runBacktest(build(21), {
+        ...base,
+        swapOnBetter: true,
+        swapMargin: 15,
+        swapMinHoldDays: 5,
+      })
+      const loose = runBacktest(build(21), {
+        ...base,
+        swapOnBetter: true,
+        swapMargin: 0,
+        swapMinHoldDays: 5,
+      })
+      expect(strict.holdings.at(-1)!.codes).toEqual(['1111'])
+      expect(loose.holdings.at(-1)!.codes).toEqual(['2222'])
+    })
+
+    it('最短持有天數未到 → 不換', () => {
+      const held = runBacktest(build(100), {
+        ...base,
+        swapOnBetter: true,
+        swapMargin: 15,
+        swapMinHoldDays: 100,
+      })
+      expect(held.holdings.at(-1)!.codes).toEqual(['1111'])
+    })
+  })
+
   it('returns empty-ish result when history too short', () => {
     const r = runBacktest(history(1), {
       factor: 'm20',

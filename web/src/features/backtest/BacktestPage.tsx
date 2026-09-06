@@ -193,6 +193,9 @@ export function BacktestPage() {
     stopPct: c.stopPct ?? 20,
     stopMaDays: c.stopMaDays ?? 20,
     stopExecNext: c.stopExecNext ?? false,
+    swapOnBetter: c.swapOnBetter ?? false,
+    swapMargin: c.swapMargin ?? 15,
+    swapMinHoldDays: c.swapMinHoldDays ?? 10,
     regime: c.regime ?? 'off',
     regimeDays: c.regimeDays ?? 200,
     regimeExit: c.regimeExit ?? 'rebalance',
@@ -356,6 +359,37 @@ export function BacktestPage() {
           ]}
           onChange={(v) => patch({ execLagDays: v })}
         />
+        <CycleField
+          label="動能換股"
+          value={cfg.swapOnBetter ? 'on' : 'off'}
+          options={[
+            ['off', '關'],
+            ['on', '開'],
+          ]}
+          onChange={(v) => patch({ swapOnBetter: v === 'on' })}
+        />
+        {cfg.swapOnBetter && (
+          <>
+            <StepperField
+              label="換股門檻"
+              value={cfg.swapMargin ?? 15}
+              min={0}
+              max={50}
+              step={5}
+              onChange={(v) => patch({ swapMargin: v })}
+              format={(v) => `高出 ${v}%`}
+            />
+            <StepperField
+              label="最短持有"
+              value={cfg.swapMinHoldDays ?? 10}
+              min={0}
+              max={60}
+              step={5}
+              onChange={(v) => patch({ swapMinHoldDays: v })}
+              format={(v) => `${v} 交易日`}
+            />
+          </>
+        )}
       </Section>
 
       <Section title="風控">
