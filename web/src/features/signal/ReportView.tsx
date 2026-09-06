@@ -125,44 +125,62 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
       {report.holdings.length > 0 && (
         <section>
           <h3>我目前持有</h3>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>代號</th>
-                <th>股數</th>
-                <th>買進價</th>
-                <th>現價</th>
-                <th>損益</th>
-                <th>{flabel}</th>
-                <th>排名</th>
-                <th>停損</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.holdings.map((h) => (
-                <tr key={h.code}>
-                  <td>
-                    {h.code} {h.name}
-                  </td>
-                  <td>{h.shares.toLocaleString()}</td>
-                  <td>{price(h.entryPrice)}</td>
-                  <td>{price(h.price)}</td>
-                  <td className={h.plPct != null && h.plPct < 0 ? styles.neg : styles.pos}>
-                    {pct(h.plPct)}
-                  </td>
-                  <td>{h.factor == null ? '—' : fmt(h.factor)}</td>
-                  <td>{h.factorRank == null ? '—' : `#${h.factorRank}`}</td>
-                  <td className={h.stop?.hit ? styles.neg : undefined}>
-                    {!h.stop
-                      ? '—'
-                      : h.stop.hit
-                        ? `已觸發（${pct(h.stop.pct)}）→ 出場`
-                        : `距停損 ${pct(h.stop.room)}`}
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>代號</th>
+                  <th>股數</th>
+                  <th>買進價</th>
+                  <th>現價</th>
+                  <th>損益(vs買進)</th>
+                  <th>距高點</th>
+                  <th>停損線</th>
+                  <th>距停損</th>
+                  <th>{flabel}</th>
+                  <th>排名</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {report.holdings.map((h) => (
+                  <tr key={h.code}>
+                    <td>
+                      {h.code} {h.name}
+                    </td>
+                    <td>{h.shares.toLocaleString()}</td>
+                    <td>{price(h.entryPrice)}</td>
+                    <td>{price(h.price)}</td>
+                    <td className={h.plPct != null && h.plPct < 0 ? styles.neg : styles.pos}>
+                      {pct(h.plPct)}
+                    </td>
+                    <td
+                      className={
+                        h.stop?.type === 'trailing' && h.stop.pct < 0 ? styles.neg : undefined
+                      }
+                    >
+                      {h.stop?.type === 'trailing' ? pct(h.stop.pct) : '—'}
+                    </td>
+                    <td>{h.stop ? price(h.stop.stopPrice) : '—'}</td>
+                    <td className={h.stop?.hit ? styles.neg : undefined}>
+                      {!h.stop
+                        ? '—'
+                        : h.stop.hit
+                          ? '已觸發 → 出場'
+                          : h.stop.type === 'ma'
+                            ? `高於均線 ${pct(h.stop.pct)}`
+                            : pct(h.stop.room)}
+                    </td>
+                    <td>{h.factor == null ? '—' : fmt(h.factor)}</td>
+                    <td>{h.factorRank == null ? '—' : `#${h.factorRank}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={styles.sub}>
+            「距高點」只有移動停損有值（現價 vs 買進後最高<b>收盤</b>價）。「停損線」=
+            跌破就出場的價位。
+          </p>
         </section>
       )}
 

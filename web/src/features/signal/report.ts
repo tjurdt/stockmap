@@ -30,9 +30,13 @@ export interface TargetRow {
 
 export interface StopInfo {
   type: 'fixed' | 'trailing' | 'daily' | 'ma'
-  /** 參考價：固定＝買進價；移動＝買進後最高（含當日收盤）；均線＝當日均線值；單日＝前一交易日收盤 */
+  /** 參考價：固定＝買進價；移動＝買進後最高收盤；均線＝當日均線值；單日＝前一交易日收盤 */
   refPrice: number
-  /** 現價相對參考價的漲跌幅（負值＝虧損） */
+  /** 觸發價位（現價跌破這個就出場） */
+  stopPrice: number
+  /** 移動停損的波段最高收盤（含當日）；其餘型態為 null */
+  peakPrice: number | null
+  /** 現價相對參考價的漲跌幅（負值＝虧損；移動停損時＝距高點） */
   pct: number
   hit: boolean
   /** 距觸發還有多少百分點（已觸發為 <= 0） */
@@ -299,18 +303,20 @@ export function buildOperatorReport(
     const now = px(code)
     if (now == null) return null
 
+    const peakPrice = type === 'trailing' ? Math.max(entryPrice, peakSince(code, entryDate)) : null
     let refPrice: number | null
-    if (type === 'trailing') refPrice = Math.max(entryPrice, peakSince(code, entryDate))
+    if (type === 'trailing') refPrice = peakPrice
     else if (type === 'ma') refPrice = maClose(code, maDays)
     else if (type === 'daily') refPrice = prevClose(code)
     else refPrice = entryPrice
     if (refPrice == null || refPrice <= 0) return null
 
     const pct = now / refPrice - 1
-    // ma：現價低於均線就出場（不看 stopPct）；其餘：跌幅超過 stopPct
+    // ma：現價低於均線就出場（不看 stopPct，停損線 = 均線本身）；其餘：跌幅超過 stopPct
+    const stopPrice = type === 'ma' ? refPrice : refPrice * (1 - stopFrac)
     const hit = type === 'ma' ? pct < 0 : pct <= -stopFrac
     const room = type === 'ma' ? pct : pct + stopFrac
-    return { type, refPrice, pct, hit, room }
+    return { type, refPrice, stopPrice, peakPrice, pct, hit, room }
   }
 
   const holdings: HoldingRow[] = plan.holdings.map((h) => {

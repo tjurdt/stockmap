@@ -127,7 +127,7 @@ export function SignalPage() {
   const toSell = holdings.filter((h) => !targetCodes.has(h.code))
   const toKeep = holdings.filter((h) => targetCodes.has(h.code))
 
-  const stopHit = (h: Position): { pct: number; hit: boolean } | null => {
+  const stopHit = (h: Position): { pct: number; hit: boolean; stopPrice: number } | null => {
     if (p.stopType === 'none') return null
     const now = px(h.code)
     if (now == null) return null
@@ -139,7 +139,8 @@ export function SignalPage() {
     else ref = h.entryPrice
     if (ref == null || ref <= 0) return null
     const pct = now / ref - 1
-    return { pct, hit: p.stopType === 'ma' ? pct < 0 : pct <= -p.stopPct / 100 }
+    const stopPrice = p.stopType === 'ma' ? ref : ref * (1 - p.stopPct / 100)
+    return { pct, hit: p.stopType === 'ma' ? pct < 0 : pct <= -p.stopPct / 100, stopPrice }
   }
 
   const swapSignal =
@@ -274,47 +275,57 @@ export function SignalPage() {
         <h3>我目前持有</h3>
         <HoldingsEditor value={holdings} onChange={setHoldings} names={names} />
         {holdings.length > 0 && (
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>代號</th>
-                <th>股數</th>
-                <th>買進價</th>
-                <th>現價</th>
-                <th>損益</th>
-                <th>停損（{stopLabel}）</th>
-              </tr>
-            </thead>
-            <tbody>
-              {holdings.map((h) => {
-                const now = px(h.code)
-                const pl = now != null ? now / h.entryPrice - 1 : null
-                const st = stopHit(h)
-                return (
-                  <tr key={h.code}>
-                    <td>
-                      {h.code} {names.get(h.code) ?? ''}
-                    </td>
-                    <td>{h.shares.toLocaleString()}</td>
-                    <td>{price(h.entryPrice)}</td>
-                    <td>{price(now)}</td>
-                    <td className={pl != null && pl < 0 ? styles.neg : styles.pos}>
-                      {pl == null ? '—' : `${pl >= 0 ? '+' : ''}${(pl * 100).toFixed(1)}%`}
-                    </td>
-                    <td className={st?.hit ? styles.neg : undefined}>
-                      {!st
-                        ? '—'
-                        : st.hit
-                          ? `已觸發（${(st.pct * 100).toFixed(1)}%）→ 出場`
-                          : p.stopType === 'ma'
-                            ? `高於均線 ${(st.pct * 100).toFixed(1)}%`
-                            : `距停損 ${((st.pct + p.stopPct / 100) * 100).toFixed(1)}%`}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto' }}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>代號</th>
+                  <th>股數</th>
+                  <th>買進價</th>
+                  <th>現價</th>
+                  <th>損益(vs買進)</th>
+                  {p.stopType === 'trailing' && <th>距高點</th>}
+                  <th>停損線（{stopLabel}）</th>
+                  <th>距停損</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holdings.map((h) => {
+                  const now = px(h.code)
+                  const pl = now != null ? now / h.entryPrice - 1 : null
+                  const st = stopHit(h)
+                  return (
+                    <tr key={h.code}>
+                      <td>
+                        {h.code} {names.get(h.code) ?? ''}
+                      </td>
+                      <td>{h.shares.toLocaleString()}</td>
+                      <td>{price(h.entryPrice)}</td>
+                      <td>{price(now)}</td>
+                      <td className={pl != null && pl < 0 ? styles.neg : styles.pos}>
+                        {pl == null ? '—' : `${pl >= 0 ? '+' : ''}${(pl * 100).toFixed(1)}%`}
+                      </td>
+                      {p.stopType === 'trailing' && (
+                        <td className={st && st.pct < 0 ? styles.neg : undefined}>
+                          {st ? `${(st.pct * 100).toFixed(1)}%` : '—'}
+                        </td>
+                      )}
+                      <td>{st ? price(st.stopPrice) : '—'}</td>
+                      <td className={st?.hit ? styles.neg : undefined}>
+                        {!st
+                          ? '—'
+                          : st.hit
+                            ? '已觸發 → 出場'
+                            : p.stopType === 'ma'
+                              ? `高於均線 ${(st.pct * 100).toFixed(1)}%`
+                              : `${((st.pct + p.stopPct / 100) * 100).toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
