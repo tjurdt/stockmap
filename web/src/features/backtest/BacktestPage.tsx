@@ -11,14 +11,10 @@ import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
-import {
-  dailyWindowOutcomes,
-  rollingWindowReturns,
-  summarizeOutcomes,
-  summarizeRolling,
-} from '../../lib/rolling'
+import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../../lib/rolling'
 import { CompareTable, type CompareRow } from './CompareTable'
 import { useLockedStrategies } from './compare'
+import { distributionOutcomes, type DistMode } from './distribution'
 import { BACKTEST_FACTORS, poolAtDate, runBacktest, type BacktestConfig } from './engine'
 import { EquityChart } from './EquityChart'
 import { LockedBar } from './LockedBar'
@@ -160,19 +156,19 @@ export function BacktestPage() {
 
   // 報酬分布：逐交易日起點、抱滿 N 個月的所有結果（用完整歷史）
   const [distMonths, setDistMonths] = useState(() => stored?.distMonths ?? 12)
-  const outcomes = useMemo(() => {
-    if (!fullResult) return []
-    return dailyWindowOutcomes(
-      fullResult.dates,
-      fullResult.equity,
-      fullResult.benchmark,
-      distMonths,
-      {
-        大盤: alignNormalized(blData, fullResult.dates, 'twiiTR'),
-        '0050': alignNormalized(blData, fullResult.dates, 'e0050'),
-      },
-    )
-  }, [fullResult, distMonths, blData])
+  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'all')
+  // 'all' 模式涵蓋所有換股日 → 結果不受 rebalanceDay 影響，memo key 就把它拿掉，避免白重算
+  const distKey = useMemo(() => {
+    const c: Partial<BacktestConfig> = { ...cfg }
+    if (distMode === 'all') delete c.rebalanceDay
+    return `${JSON.stringify(c)}|${distMonths}|${distMode}`
+  }, [cfg, distMonths, distMode])
+  const outcomes = useMemo(
+    () =>
+      history.length > 1 ? distributionOutcomes(history, cfg, blData, distMonths, distMode) : [],
+    // distKey 已涵蓋 cfg / distMonths / distMode
+    [history, blData, distKey],
+  )
   const distSummary = useMemo(() => summarizeOutcomes(outcomes), [outcomes])
 
   const span = result?.dates.length ? `${result.dates[0]} ~ ${result.dates.at(-1)}` : ''
@@ -232,9 +228,10 @@ export function BacktestPage() {
       endMonth,
       refs,
       distMonths,
+      distMode,
       windowMonths,
     })
-  }, [cfg, startMonth, endMonth, refs, distMonths, windowMonths])
+  }, [cfg, startMonth, endMonth, refs, distMonths, distMode, windowMonths])
 
   const series = useMemo(() => {
     type S = { label: string; values: (number | null)[]; color: string; dashed?: boolean }
@@ -716,15 +713,28 @@ export function BacktestPage() {
                     <h3>
                       報酬分布{' '}
                       <span className={styles.sub}>
-                        任一交易日進場、抱滿 N 個月的所有結果（{distSummary.n} 個起點）
+                        {distMode === 'all'
+                          ? `任一交易日進場、任一換股日、抱滿 N 個月的所有結果（${distSummary.n.toLocaleString()} 組）`
+                          : `任一交易日進場、抱滿 N 個月的所有結果（${distSummary.n} 個起點）`}
                       </span>
                     </h3>
-                    <CycleField
-                      label="持有期"
-                      value={distMonths}
-                      options={WINDOW_OPTS}
-                      onChange={setDistMonths}
-                    />
+                    <div className={styles.distControls}>
+                      <CycleField
+                        label="換股日"
+                        value={distMode}
+                        options={[
+                          ['all', '涵蓋所有'],
+                          ['follow', '跟隨設定'],
+                        ]}
+                        onChange={setDistMode}
+                      />
+                      <CycleField
+                        label="持有期"
+                        value={distMonths}
+                        options={WINDOW_OPTS}
+                        onChange={setDistMonths}
+                      />
+                    </div>
                   </div>
                   <OutcomeHistogram
                     returns={outcomes.map((o) => o.ret)}
@@ -773,6 +783,9 @@ export function BacktestPage() {
                     )}
                   </div>
                   <p className={styles.rollLegend}>
+                    {distMode === 'all'
+                      ? '「涵蓋所有換股日」= 每月第 1..20 個交易日換股各跑一次、把結果合起來，分布不受你選第幾個交易日影響。'
+                      : '「跟隨設定」= 用你目前設定的換股日。'}
                     重疊視窗、非獨立樣本，期望值與標準差僅供參考。詳見下方說明。
                   </p>
                 </section>
