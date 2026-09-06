@@ -5,6 +5,7 @@ import { Layout } from '../../components/Layout'
 import { CycleField } from '../../components/controls/CycleField'
 import { Section } from '../../components/controls/Section'
 import { StepperField } from '../../components/controls/StepperField'
+import { SubGroup } from '../../components/controls/SubGroup'
 import { useAsync } from '../../hooks/useAsync'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useSnapshot } from '../../hooks/useSnapshot'
@@ -15,7 +16,13 @@ import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../..
 import { CompareTable, type CompareRow } from './CompareTable'
 import { useLockedStrategies } from './compare'
 import { distributionOutcomes, type DistMode } from './distribution'
-import { BACKTEST_FACTORS, poolAtDate, runBacktest, type BacktestConfig } from './engine'
+import {
+  BACKTEST_FACTORS,
+  MOMENTUM_KEYS,
+  poolAtDate,
+  runBacktest,
+  type BacktestConfig,
+} from './engine'
 import { EquityChart } from './EquityChart'
 import { LockedBar } from './LockedBar'
 import { MethodNotes } from './MethodNotes'
@@ -196,6 +203,8 @@ export function BacktestPage() {
 
   const asParams = (c: BacktestConfig): StrategyParams => ({
     factor: c.factor,
+    momDays: c.momDays ?? 0,
+    momSkip: c.momSkip ?? 0,
     topN: c.topN,
     poolTopN: c.poolTopN ?? 50,
     rebalance: c.rebalance,
@@ -334,6 +343,30 @@ export function BacktestPage() {
           options={FACTOR_OPTS}
           onChange={(v) => patch({ factor: v })}
         />
+        {MOMENTUM_KEYS.has(cfg.factor) && (
+          <SubGroup>
+            <StepperField
+              label="回看天數"
+              value={cfg.momDays ?? 0}
+              min={0}
+              max={300}
+              step={5}
+              onChange={(v) => patch({ momDays: v })}
+              format={(v) => (v === 0 ? '用內建窗' : `${v} 交易日`)}
+            />
+            {(cfg.momDays ?? 0) > 0 && (
+              <StepperField
+                label="跳過近期"
+                value={cfg.momSkip ?? 0}
+                min={0}
+                max={60}
+                step={5}
+                onChange={(v) => patch({ momSkip: v })}
+                format={(v) => `${v} 交易日`}
+              />
+            )}
+          </SubGroup>
+        )}
         <StepperField
           label="持股數"
           value={cfg.topN}
@@ -399,7 +432,7 @@ export function BacktestPage() {
           onChange={(v) => patch({ swapOnBetter: v === 'on' })}
         />
         {cfg.swapOnBetter && (
-          <>
+          <SubGroup>
             <StepperField
               label="換股門檻"
               value={cfg.swapMargin ?? 15}
@@ -427,7 +460,7 @@ export function BacktestPage() {
               ]}
               onChange={(v) => patch({ swapExecNext: v === 'next' })}
             />
-          </>
+          </SubGroup>
         )}
       </Section>
 
@@ -444,43 +477,45 @@ export function BacktestPage() {
           ]}
           onChange={(v) => patch({ stopType: v })}
         />
-        {stopType !== 'none' && stopType !== 'ma' && (
-          <StepperField
-            label={
-              stopType === 'trailing'
-                ? '停損%（自高點）'
-                : stopType === 'daily'
-                  ? '單日跌幅%'
-                  : '停損%（自買進）'
-            }
-            value={cfg.stopPct ?? 20}
-            min={2}
-            max={50}
-            onChange={(v) => patch({ stopPct: v })}
-            format={(v) => `${v}%`}
-          />
-        )}
-        {stopType === 'ma' && (
-          <StepperField
-            label="均線天數"
-            value={cfg.stopMaDays ?? 20}
-            min={5}
-            max={120}
-            step={5}
-            onChange={(v) => patch({ stopMaDays: v })}
-            format={(v) => `${v} 日`}
-          />
-        )}
         {stopType !== 'none' && (
-          <CycleField
-            label="停損成交"
-            value={cfg.stopExecNext ? 'next' : 'close'}
-            options={[
-              ['close', '當日收盤'],
-              ['next', '隔一交易日'],
-            ]}
-            onChange={(v) => patch({ stopExecNext: v === 'next' })}
-          />
+          <SubGroup>
+            {stopType !== 'ma' && (
+              <StepperField
+                label={
+                  stopType === 'trailing'
+                    ? '停損%（自高點）'
+                    : stopType === 'daily'
+                      ? '單日跌幅%'
+                      : '停損%（自買進）'
+                }
+                value={cfg.stopPct ?? 20}
+                min={2}
+                max={50}
+                onChange={(v) => patch({ stopPct: v })}
+                format={(v) => `${v}%`}
+              />
+            )}
+            {stopType === 'ma' && (
+              <StepperField
+                label="均線天數"
+                value={cfg.stopMaDays ?? 20}
+                min={5}
+                max={120}
+                step={5}
+                onChange={(v) => patch({ stopMaDays: v })}
+                format={(v) => `${v} 日`}
+              />
+            )}
+            <CycleField
+              label="停損成交"
+              value={cfg.stopExecNext ? 'next' : 'close'}
+              options={[
+                ['close', '當日收盤'],
+                ['next', '隔一交易日'],
+              ]}
+              onChange={(v) => patch({ stopExecNext: v === 'next' })}
+            />
+          </SubGroup>
         )}
         <CycleField
           label="多空過濾"
@@ -493,7 +528,7 @@ export function BacktestPage() {
           onChange={(v) => patch({ regime: v })}
         />
         {(cfg.regime ?? 'off') !== 'off' && (
-          <>
+          <SubGroup>
             <StepperField
               label="回看天數"
               value={cfg.regimeDays ?? 200}
@@ -521,7 +556,7 @@ export function BacktestPage() {
               ]}
               onChange={(v) => patch({ bearHolding: v })}
             />
-          </>
+          </SubGroup>
         )}
       </Section>
 

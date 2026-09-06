@@ -15,6 +15,8 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 export const strategySchema = z.object({
   factor: z.enum(['price', 'mcap', 'pe', 'pb', 'dy', 'chg', 'turn', 'm20', 'm60', 'm121']),
+  momDays: z.number().int().nonnegative(),
+  momSkip: z.number().int().nonnegative(),
   topN: z.number().int().positive(),
   poolTopN: z.number().int().positive(),
   rebalance: z.enum(['W', 'M']),

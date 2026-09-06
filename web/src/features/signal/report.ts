@@ -16,6 +16,7 @@ import {
   rankTargets,
   regimeByDate,
   shouldSwap,
+  withCustomMomentum,
   type BacktestConfig,
 } from '../backtest/engine'
 
@@ -168,7 +169,13 @@ export function buildOperatorReport(
   const prevRow = rows.at(-2)
 
   const cfg = cfgOf(plan)
-  const factorLabel = METRICS[cfg.factor].label
+  // 自訂動能窗：把因子欄位換成重算值，排名一律用這份
+  const fRows = withCustomMomentum(rows, cfg)
+  const fLast = fRows.at(-1)!
+  const custom = (cfg.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(cfg.factor)
+  const factorLabel = custom
+    ? `自訂動能 ${cfg.momDays}${(cfg.momSkip ?? 0) > 0 ? `-${cfg.momSkip}` : ''} 日`
+    : METRICS[cfg.factor].label
 
   const regimeMap = regimeByDate(
     [prevRow?.date ?? lastRow.date, lastRow.date],
@@ -202,7 +209,7 @@ export function buildOperatorReport(
     return mx
   }
 
-  const rawTargets = regime === 'bear' ? [] : rankTargets(lastRow, cfg)
+  const rawTargets = regime === 'bear' ? [] : rankTargets(fLast, cfg)
   const targets: TargetRow[] = rawTargets.map((t) => ({
     code: t.code,
     name: name(t.code),
@@ -213,7 +220,7 @@ export function buildOperatorReport(
 
   // 動能換股：非排程日也可能因為挑戰者反超而觸發換股
   const factorOf = (code: string): number | null => {
-    const s = lastRow.stocks.find((x) => x.code === code)
+    const s = fLast.stocks.find((x) => x.code === code)
     if (!s) return null
     const v = (s as Record<string, unknown>)[METRICS[cfg.factor].field]
     return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -243,7 +250,7 @@ export function buildOperatorReport(
 
   // 動能排行 vs 我的持股（前十 + 未進前十的持股）
   const heldSet = new Set(plan.holdings.map((h) => h.code))
-  const fullRank = regime === 'bear' ? [] : factorRanking(lastRow, cfg, 9999)
+  const fullRank = regime === 'bear' ? [] : factorRanking(fLast, cfg, 9999)
   const rankOf = new Map(fullRank.map((r, i) => [r.code, i + 1]))
   const factorByCode = new Map(fullRank.map((r) => [r.code, r.factor]))
   const boardCodes = [

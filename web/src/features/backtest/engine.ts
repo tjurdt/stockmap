@@ -23,6 +23,13 @@ export interface BacktestConfig {
   /** 選股池：每個再平衡日先取「當日市值前 poolTopN 大」；省略/0 = 全 universe */
   poolTopN?: number
   factor: MetricKey
+  /**
+   * 只在 factor 是動能（m20/m60/m121）時生效：自訂回看天數（0 = 用因子內建 20/60/250）。
+   * 前端 / 引擎依 adjClose 逐日重算，公式同 pipeline `factors.py::total_return`。
+   */
+  momDays?: number
+  /** 自訂動能：跳過最近幾個交易日（0 = 不跳；學界 12-1 動能用 20）。 */
+  momSkip?: number
   topN: number
   rebalance: Rebalance
   /**
@@ -140,6 +147,47 @@ function histValue(hs: HistStock, key: MetricKey): number | null {
   const f = METRICS[key].field
   const v = (hs as Record<string, unknown>)[f]
   return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+/** 可自訂回看窗的動能因子 key。 */
+export const MOMENTUM_KEYS = new Set<MetricKey>(['m20', 'm60', 'm121'])
+
+export function isCustomMomentum(cfg: Pick<BacktestConfig, 'factor' | 'momDays'>): boolean {
+  return MOMENTUM_KEYS.has(cfg.factor) && (cfg.momDays ?? 0) > 0
+}
+
+/**
+ * 還原價序列（由舊到新）的區間報酬率 (%)。對齊 pipeline `factors.py::total_return`：
+ * start = series[-(lookback+1)]、end = series[-(1+skip)]（跳過近期 → 動能窗少掉 skip 天，同 12-1 定義）。
+ * 長度不足回 null。
+ */
+export function momentumPct(series: number[], lookback: number, skip: number): number | null {
+  const need = lookback + 1
+  if (series.length < need || series.length < skip + 1) return null
+  const end = series[series.length - 1 - skip]!
+  const start = series[series.length - need]!
+  return start > 0 ? (end / start - 1) * 100 : null
+}
+
+/**
+ * 若 cfg 要求自訂動能窗，回傳一份新的 rows，每檔的動能欄位換成依 adjClose 重算的值；
+ * 否則原樣回傳。純函式（不改輸入）。
+ */
+export function withCustomMomentum(rows: HistoryRow[], cfg: BacktestConfig): HistoryRow[] {
+  if (!isCustomMomentum(cfg)) return rows
+  const lookback = Math.max(1, Math.round(cfg.momDays ?? 0))
+  const skip = Math.max(0, Math.round(cfg.momSkip ?? 0))
+  const field = METRICS[cfg.factor].field
+  const series = new Map<string, number[]>()
+  return rows.map((row) => ({
+    ...row,
+    stocks: row.stocks.map((s) => {
+      const arr = series.get(s.code) ?? []
+      if (s.adjClose != null && s.adjClose > 0) arr.push(s.adjClose)
+      series.set(s.code, arr)
+      return { ...s, [field]: momentumPct(arr, lookback, skip) }
+    }),
+  }))
 }
 
 function isoWeekKey(iso: string): string {
@@ -492,7 +540,8 @@ export function runBacktest(
   cfg: BacktestConfig,
   baselines: BaselineRow[] = [],
 ): BacktestResult {
-  const rows = history
+  // 自訂動能要用完整序列算，再裁區間（不然區間起點的動能會少掉前面的價）
+  const rows = withCustomMomentum(history, cfg)
     .filter(
       (r) => (!cfg.startDate || r.date >= cfg.startDate) && (!cfg.endDate || r.date <= cfg.endDate),
     )

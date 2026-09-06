@@ -6,6 +6,8 @@ describe('strategyParams', () => {
   it('encode → decode 還原', () => {
     const p = {
       factor: 'm20' as const,
+      momDays: 45,
+      momSkip: 5,
       topN: 3,
       poolTopN: 40,
       rebalance: 'W' as const,

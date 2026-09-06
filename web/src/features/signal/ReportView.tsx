@@ -11,6 +11,7 @@ const money = (v: number | null | undefined) => (v == null ? '—' : Math.round(
 
 export function ReportView({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
   const fmt = METRICS[factor].fmt
+  const flabel = report.factorLabel
 
   return (
     <>
@@ -88,7 +89,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
         <h3>
           目標持股{' '}
           <span className={styles.sub}>
-            依 {METRICS[factor].label} 排名（{report.asOfDate} 收盤）
+            依 {flabel} 排名（{report.asOfDate} 收盤）
           </span>
         </h3>
         {report.targets.length === 0 ? (
@@ -100,7 +101,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                 <th>#</th>
                 <th>代號</th>
                 <th>名稱</th>
-                <th>{METRICS[factor].label}</th>
+                <th>{flabel}</th>
                 <th>現價</th>
                 <th>目標權重</th>
               </tr>
@@ -132,7 +133,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                 <th>買進價</th>
                 <th>現價</th>
                 <th>損益</th>
-                <th>{METRICS[factor].label}</th>
+                <th>{flabel}</th>
                 <th>排名</th>
                 <th>停損</th>
               </tr>
@@ -170,7 +171,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
           <h3>
             動能排行 vs 我的持股{' '}
             <span className={styles.sub}>
-              {METRICS[factor].label} · 依 {report.asOfDate} 收盤（動能只在收盤更新）
+              {flabel} · 依 {report.asOfDate} 收盤（動能只在收盤更新）
             </span>
           </h3>
           <div style={{ overflowX: 'auto' }}>
@@ -180,7 +181,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                   <th>#</th>
                   <th>代號</th>
                   <th>名稱</th>
-                  <th>{METRICS[factor].label}</th>
+                  <th>{flabel}</th>
                   {report.holdings.map((h) => (
                     <th key={h.code}>vs {h.code}</th>
                   ))}
@@ -210,8 +211,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
             </table>
           </div>
           <p className={styles.sub}>
-            「vs 代號」= 這一列的{METRICS[factor].label}減掉你那檔持股的值（正=紅、比你手上的強）。
-            持股列標藍。
+            「vs 代號」= 這一列的{flabel}減掉你那檔持股的值（正=紅、比你手上的強）。 持股列標藍。
           </p>
         </section>
       )}
