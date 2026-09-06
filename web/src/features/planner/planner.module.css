@@ -25,6 +25,21 @@
   color: var(--muted);
   margin: 14px 0 4px;
 }
+.group {
+  border: 1px solid var(--line);
+  background: var(--section-bg, var(--surface));
+  padding: 2px 12px 12px;
+  margin: 12px 0;
+}
+.group > .field:first-child {
+  margin-top: 10px;
+}
+.gTiming {
+  --section-bg: var(--tone-swap);
+}
+.gStrategy {
+  --section-bg: var(--tone-pick);
+}
 .panel input[type='date'],
 .panel input[type='range'] {
   width: 100%;

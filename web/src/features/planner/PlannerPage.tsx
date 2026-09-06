@@ -75,83 +75,90 @@ export function PlannerPage() {
             </p>
           )}
 
-          <label className={styles.field}>策略上線日</label>
-          <input
-            type="date"
-            value={plan.startDate}
-            onChange={(e) => setPlan({ ...plan, startDate: e.target.value })}
-          />
-          <p className={styles.hint}>這天之前，提醒信只給「上線當天要買的目標清單」。</p>
+          <div className={`${styles.group} ${styles.gTiming}`}>
+            <label className={styles.field}>策略上線日</label>
+            <input
+              type="date"
+              value={plan.startDate}
+              onChange={(e) => setPlan({ ...plan, startDate: e.target.value })}
+            />
+            <p className={styles.hint}>
+              上線日進場買下方目標清單；之後每逢換股日再依規則調整。例如：上線日設本月 7
+              號、換股日設 「每月第一個交易日」，就是 7 號建倉、之後每月月初決定要不要換股。
+            </p>
 
-          <label className={styles.field}>換股頻率</label>
-          <div className={styles.radios}>
-            {(['W', 'M'] as const).map((v) => (
-              <button
-                key={v}
-                data-on={s.rebalance === v}
-                onClick={() => patchStrategy({ rebalance: v })}
-              >
-                {v === 'W' ? '每週' : '每月'}
-              </button>
-            ))}
+            <label className={styles.field}>換股頻率</label>
+            <div className={styles.radios}>
+              {(['W', 'M'] as const).map((v) => (
+                <button
+                  key={v}
+                  data-on={s.rebalance === v}
+                  onClick={() => patchStrategy({ rebalance: v })}
+                >
+                  {v === 'W' ? '每週' : '每月'}
+                </button>
+              ))}
+            </div>
+
+            {s.rebalance === 'M' ? (
+              <>
+                <label className={styles.field}>每月第 {s.rebalanceDay} 個交易日換股</label>
+                <div className={styles.radios}>
+                  <button
+                    data-on={s.rebalanceDay === 1}
+                    onClick={() => patchStrategy({ rebalanceDay: 1 })}
+                  >
+                    每月第一個交易日
+                  </button>
+                  <button
+                    data-on={s.rebalanceDay === tradingDayOrdinal(plan.startDate, holidays)}
+                    onClick={() =>
+                      patchStrategy({ rebalanceDay: tradingDayOrdinal(plan.startDate, holidays) })
+                    }
+                  >
+                    跟上線日同順位（第 {tradingDayOrdinal(plan.startDate, holidays)}）
+                  </button>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={23}
+                  value={s.rebalanceDay}
+                  onChange={(e) => patchStrategy({ rebalanceDay: Number(e.target.value) })}
+                />
+              </>
+            ) : (
+              <>
+                <label className={styles.field}>每週星期幾換股</label>
+                <div className={styles.radios}>
+                  {WEEKDAYS.map(([v, label]) => (
+                    <button
+                      key={v}
+                      data-on={String(s.rebalanceDay) === v}
+                      onClick={() => patchStrategy({ rebalanceDay: Number(v) })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
-          {s.rebalance === 'M' ? (
-            <>
-              <label className={styles.field}>每月第 {s.rebalanceDay} 個交易日換股</label>
-              <div className={styles.radios}>
-                <button
-                  data-on={s.rebalanceDay === 1}
-                  onClick={() => patchStrategy({ rebalanceDay: 1 })}
-                >
-                  每月第一個交易日
-                </button>
-                <button
-                  data-on={s.rebalanceDay === tradingDayOrdinal(plan.startDate, holidays)}
-                  onClick={() =>
-                    patchStrategy({ rebalanceDay: tradingDayOrdinal(plan.startDate, holidays) })
-                  }
-                >
-                  跟上線日同順位（第 {tradingDayOrdinal(plan.startDate, holidays)}）
-                </button>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={23}
-                value={s.rebalanceDay}
-                onChange={(e) => patchStrategy({ rebalanceDay: Number(e.target.value) })}
-              />
-            </>
-          ) : (
-            <>
-              <label className={styles.field}>每週星期幾換股</label>
-              <div className={styles.radios}>
-                {WEEKDAYS.map(([v, label]) => (
-                  <button
-                    key={v}
-                    data-on={String(s.rebalanceDay) === v}
-                    onClick={() => patchStrategy({ rebalanceDay: Number(v) })}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <div className={`${styles.group} ${styles.gStrategy}`}>
+            <label className={styles.field}>策略參數</label>
+            <p className={styles.strategyLine}>{report?.strategySummary ?? '載入中…'}</p>
+            <Link to={`/backtest?${strategyQuery}`} className={styles.link}>
+              → 回回測頁調整因子 / 檔數 / 停損 / 動能換股 / 多空過濾
+            </Link>
 
-          <label className={styles.field}>策略參數</label>
-          <p className={styles.strategyLine}>{report?.strategySummary ?? '載入中…'}</p>
-          <Link to={`/backtest?${strategyQuery}`} className={styles.link}>
-            → 回回測頁調整因子 / 檔數 / 停損 / 多空過濾
-          </Link>
-
-          <label className={styles.field}>目前持股</label>
-          <HoldingsEditor
-            value={plan.holdings}
-            names={names}
-            onChange={(holdings) => setPlan({ ...plan, holdings })}
-          />
+            <label className={styles.field}>目前持股</label>
+            <HoldingsEditor
+              value={plan.holdings}
+              names={names}
+              onChange={(holdings) => setPlan({ ...plan, holdings })}
+            />
+          </div>
 
           <hr className={styles.hr} />
           <button className={styles.copyBtn} onClick={copy}>

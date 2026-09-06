@@ -12,6 +12,13 @@
   --flat: #7c8792;
   --accent: #1f4e79;
 
+  /* 設定欄分區淡底色（回測頁側欄 / 操作計畫頁） */
+  --tone-range: #f1eef7; /* 區間 — 紫 */
+  --tone-pick: #ebf2fb; /* 選股 — 藍 */
+  --tone-swap: #fcf1e6; /* 換股 — 橙 */
+  --tone-risk: #fdecec; /* 風控 — 紅 */
+  --tone-cost: #ecf6ef; /* 成本 — 綠 */
+
   --font-sans:
     system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
   --font-mono: ui-monospace, Menlo, Consolas, monospace;

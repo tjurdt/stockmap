@@ -21,8 +21,17 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
       {!report.started && (
         <div className={styles.bullBox}>
           <p>
-            策略尚未上線（上線日 <b>{report.startDate}</b>）。下方「目標持股」就是上線當天要照著買的
-            清單；在那之前不用動作。
+            策略尚未上線（上線日 <b>{report.startDate}</b>，第一個交易日{' '}
+            <b>{report.firstEntryDay}</b>
+            ）。下方「目標持股」就是上線當天要照著買的清單；在那之前不用動作。
+          </p>
+        </div>
+      )}
+      {report.isEntryDay && (
+        <div className={styles.bullBox}>
+          <p>
+            <b>今天是上線進場日</b>（上線日 {report.startDate}）—— 照下方「目標持股」建倉；
+            之後每逢換股日再依規則調整。
           </p>
         </div>
       )}
@@ -43,8 +52,15 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
         </p>
         {report.isSignalDay ? (
           <p>
-            <b>{report.asOfDate} 是換股訊號日</b> → 下一個交易日（{report.nextTradingDay}
-            ）照下方「本次換股動作」操作。
+            <b>
+              {report.asOfDate} 是
+              {report.isEntryDay
+                ? '上線進場日'
+                : report.swapSignal
+                  ? '換股訊號日（動能換股觸發）'
+                  : '換股訊號日'}
+            </b>{' '}
+            → 下一個交易日（{report.nextTradingDay}）照下方「本次換股動作」操作。
           </p>
         ) : (
           <p>
@@ -116,6 +132,8 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                 <th>買進價</th>
                 <th>現價</th>
                 <th>損益</th>
+                <th>{METRICS[factor].label}</th>
+                <th>排名</th>
                 <th>停損</th>
               </tr>
             </thead>
@@ -131,6 +149,8 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                   <td className={h.plPct != null && h.plPct < 0 ? styles.neg : styles.pos}>
                     {pct(h.plPct)}
                   </td>
+                  <td>{h.factor == null ? '—' : fmt(h.factor)}</td>
+                  <td>{h.factorRank == null ? '—' : `#${h.factorRank}`}</td>
                   <td className={h.stop?.hit ? styles.neg : undefined}>
                     {!h.stop
                       ? '—'
@@ -145,10 +165,63 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
         </section>
       )}
 
+      {report.factorBoard.length > 0 && (
+        <section>
+          <h3>
+            動能排行 vs 我的持股{' '}
+            <span className={styles.sub}>
+              {METRICS[factor].label} · 依 {report.asOfDate} 收盤（動能只在收盤更新）
+            </span>
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>代號</th>
+                  <th>名稱</th>
+                  <th>{METRICS[factor].label}</th>
+                  {report.holdings.map((h) => (
+                    <th key={h.code}>vs {h.code}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {report.factorBoard.map((b) => (
+                  <tr key={b.code} className={b.held ? styles.held : undefined}>
+                    <td>{b.rank}</td>
+                    <td>{b.code}</td>
+                    <td>{b.name}</td>
+                    <td>{fmt(b.factor)}</td>
+                    {report.holdings.map((h) => {
+                      const d = b.deltaVsHolding[h.code]
+                      return (
+                        <td
+                          key={h.code}
+                          className={d == null ? undefined : d >= 0 ? styles.pos : styles.neg}
+                        >
+                          {d == null ? '—' : `${d >= 0 ? '+' : ''}${fmt(d)}`}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={styles.sub}>
+            「vs 代號」= 這一列的{METRICS[factor].label}減掉你那檔持股的值（正=紅、比你手上的強）。
+            持股列標藍。
+          </p>
+        </section>
+      )}
+
       <section>
         <h3>
           {report.isSignalDay
-            ? '本次換股動作（明天執行）'
+            ? report.isEntryDay
+              ? '上線進場動作（明天執行）'
+              : '本次換股動作（明天執行）'
             : `下次換股日（約 ${report.nextRebalanceDate}）要做的`}
         </h3>
         {!report.isSignalDay && (
