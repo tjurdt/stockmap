@@ -163,11 +163,11 @@ export function BacktestPage() {
 
   // 報酬分布：逐交易日起點、抱滿 N 個月的所有結果（用完整歷史）
   const [distMonths, setDistMonths] = useState(() => stored?.distMonths ?? 12)
-  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'all')
-  // 'all' 模式涵蓋所有換股日 → 結果不受 rebalanceDay 影響，memo key 就把它拿掉，避免白重算
+  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'aligned')
+  // aligned / all 掃過所有換股日 → 結果不受 rebalanceDay 影響，memo key 拿掉它避免白重算
   const distKey = useMemo(() => {
     const c: Partial<BacktestConfig> = { ...cfg }
-    if (distMode === 'all') delete c.rebalanceDay
+    if (distMode !== 'follow') delete c.rebalanceDay
     return `${JSON.stringify(c)}|${distMonths}|${distMode}`
   }, [cfg, distMonths, distMode])
   const outcomes = useMemo(
@@ -748,17 +748,20 @@ export function BacktestPage() {
                     <h3>
                       報酬分布{' '}
                       <span className={styles.sub}>
-                        {distMode === 'all'
-                          ? `任一交易日進場、任一換股日、抱滿 N 個月的所有結果（${distSummary.n.toLocaleString()} 組）`
-                          : `任一交易日進場、抱滿 N 個月的所有結果（${distSummary.n} 個起點）`}
+                        {distMode === 'aligned'
+                          ? `換股日進場、掃過所有換股日、抱滿 N 個月（${distSummary.n.toLocaleString()} 組）`
+                          : distMode === 'all'
+                            ? `任一交易日進場、掃過所有換股日、抱滿 N 個月（${distSummary.n.toLocaleString()} 組）`
+                            : `任一交易日進場、抱滿 N 個月（${distSummary.n} 個起點）`}
                       </span>
                     </h3>
                     <div className={styles.distControls}>
                       <CycleField
-                        label="換股日"
+                        label="取樣"
                         value={distMode}
                         options={[
-                          ['all', '涵蓋所有'],
+                          ['aligned', '換股日進場'],
+                          ['all', '每日進場'],
                           ['follow', '跟隨設定'],
                         ]}
                         onChange={setDistMode}
@@ -818,9 +821,11 @@ export function BacktestPage() {
                     )}
                   </div>
                   <p className={styles.rollLegend}>
-                    {distMode === 'all'
-                      ? '「涵蓋所有換股日」= 每月第 1..20 個交易日換股各跑一次、把結果合起來，分布不受你選第幾個交易日影響。'
-                      : '「跟隨設定」= 用你目前設定的換股日。'}
+                    {distMode === 'aligned'
+                      ? '「換股日進場」= 每月第 1..20 個交易日換股各跑一次，只從換股日當進場點；不隨你設的換股日變。'
+                      : distMode === 'all'
+                        ? '「每日進場」= 同上但每個交易日都當進場點，樣本更多；不隨你設的換股日變。'
+                        : '「跟隨設定」= 用你目前設定的換股日。'}
                     重疊視窗、非獨立樣本，期望值與標準差僅供參考。詳見下方說明。
                   </p>
                 </section>

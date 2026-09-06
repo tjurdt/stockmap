@@ -76,15 +76,19 @@ export function dailyWindowOutcomes(
   benchmark: number[],
   windowMonths: number,
   refs: Record<string, (number | null)[] | null> = {},
+  /** 只從這些 index 當起點（省略 = 每個交易日）。 */
+  starts?: number[],
 ): WindowOutcome[] {
   if (dates.length < 2 || windowMonths < 1) return []
   const out: WindowOutcome[] = []
   const refKeys = Object.keys(refs)
+  const startIdxs = starts ?? Array.from({ length: dates.length }, (_, i) => i)
 
   // 對每個起點，二分找「不晚於 start + windowMonths 個月」的最後一個交易日當出場日
-  for (let i = 0; i < dates.length; i++) {
+  for (const i of startIdxs) {
+    if (i < 0 || i >= dates.length) continue
     const cutoff = addMonthsISO(dates[i]!, windowMonths)
-    if (dates[dates.length - 1]! < cutoff) break // 更晚的起點也湊不滿一個視窗
+    if (dates[dates.length - 1]! < cutoff) continue // 湊不滿一個視窗
     let lo = i
     let hi = dates.length - 1
     while (lo < hi) {
