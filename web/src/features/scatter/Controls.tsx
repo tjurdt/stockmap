@@ -115,7 +115,9 @@ export function Controls({
           checked={opts.medianLines}
           onChange={(v) => onChange({ medianLines: v })}
         />
-        {liveAvailable && <Toggle label="盤中報價" checked={live} onChange={onLiveChange} />}
+        {liveAvailable && (
+          <Toggle label="即時報價（Yahoo）" checked={live} onChange={onLiveChange} />
+        )}
       </div>
       <div className={styles.status}>{status}</div>
     </>

@@ -23,7 +23,7 @@ const DEFAULT_OPTS: ScatterOptions = {
 export function ScatterPage() {
   const state = useSnapshot()
   const [opts, setOpts] = useState<ScatterOptions>(DEFAULT_OPTS)
-  const [wantLive, setWantLive] = useState(false)
+  const [wantLive, setWantLive] = useState(true)
   const [showN, setShowN] = useState<number | null>(null) // null = 用 snapshot 預設
   const patch = (p: Partial<ScatterOptions>) => setOpts((o) => ({ ...o, ...p }))
   const isMobile = useMediaQuery('(max-width: 820px)')
@@ -32,8 +32,14 @@ export function ScatterPage() {
   const limit = showN ?? (state.status === 'ready' ? (state.data.universeDisplayCount ?? 20) : 20)
   const snapStocks = useMemo(() => allStocks.slice(0, limit), [allStocks, limit])
   const codes = useMemo(() => snapStocks.map((s) => s.code), [snapStocks])
-  const { quotes, isLive } = useLiveQuotes(codes, wantLive)
+  const { quotes, isLive, fetchedAt } = useLiveQuotes(codes, wantLive)
   const stocks = isLive ? applyLive(snapStocks, quotes) : snapStocks
+  const liveTime =
+    fetchedAt?.toLocaleTimeString('zh-TW', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Taipei',
+    }) ?? ''
 
   if (state.status === 'error') {
     return (
@@ -55,16 +61,16 @@ export function ScatterPage() {
     state.status !== 'ready'
       ? '載入中…'
       : isLive
-        ? `盤中（約 15 分鐘延遲）· 動能為 ${state.data.asOf} 收盤${ranked}`
+        ? `現價 Yahoo ${liveTime}（約 15–20 分延遲）· 近月/季動能已納入現價 · 12-1 動能與 PE 等為 ${state.data.asOf} 收盤${ranked}`
         : `收盤 ${state.data.asOf} · 序列 ${state.data.histLen} 日${ranked}`
   const status =
     state.status !== 'ready'
       ? '載入中…'
       : isLive
-        ? `盤中 ${quotes.size} 檔`
+        ? `即時 ${quotes.size} 檔 · Yahoo ${liveTime}`
         : wantLive
-          ? `已載入 ${stocks.length} 檔 · 盤中報價待交易時段（09:00–14:00）`
-          : `已載入 ${stocks.length} 檔`
+          ? `已載入 ${stocks.length} 檔 · 即時報價抓取中…`
+          : `已載入 ${stocks.length} 檔（即時報價已關）`
 
   return (
     <Layout asOf={asOf}>

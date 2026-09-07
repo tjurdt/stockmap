@@ -71,6 +71,38 @@ describe('buildOperatorReport', () => {
     expect(r.targets[0]!.price).toBeCloseTo(100 * 1.01 ** 29, 4)
   })
 
+  it('即時價：skip=0 動能用現價重排 → 3333 拉高後排第一', () => {
+    // priceOf 給 3333 一個超高現價 → bumpMomentum(-30, ratio) 反超 1111 的 50
+    const live = (c: string) => (c === '3333' ? 300 : null)
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({ strategy: { poolTopN: 10 } }),
+      names,
+      new Set(),
+      live,
+    )!
+    expect(r.momentumIsLive).toBe(true)
+    expect(r.priceIsLive).toBe(true)
+    expect(r.factorBoard[0]!.code).toBe('3333')
+    expect(r.targets[0]!.code).toBe('3333')
+  })
+
+  it('即時價：12-1 動能（skip=20）不受現價影響 → momentumIsLive=false', () => {
+    const live = (c: string) => (c === '3333' ? 300 : null)
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({ strategy: { factor: 'm121' } }),
+      names,
+      new Set(),
+      live,
+    )!
+    expect(r.priceIsLive).toBe(true)
+    expect(r.momentumIsLive).toBe(false)
+    expect(r.targets[0]!.code).toBe('1111') // 排名不變
+  })
+
   it('尚未上線 → started=false', () => {
     const r = buildOperatorReport(history(30), [], plan({ startDate: '2099-01-01' }), names)!
     expect(r.started).toBe(false)

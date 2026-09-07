@@ -12,10 +12,13 @@ import { METRICS } from '../../lib/metrics'
 import { useHoldings, type Position } from '../../lib/portfolio'
 import {
   isRebalanceDay,
+  MOMENTUM_KEYS,
+  momentumSkip,
   nextRebalanceDate,
   rankTargets,
   regimeByDate,
   shouldSwap,
+  withLiveMomentum,
 } from '../backtest/engine'
 import { decodeParams } from '../backtest/strategyParams'
 import { HoldingsEditor } from './HoldingsEditor'
@@ -46,12 +49,24 @@ export function SignalPage() {
   const lastRow = rows.at(-1)
   const prevRow = rows.at(-2)
 
+  // 即時報價：整個 universe（動能排名要用現價重排）+ 持股
+  const universeCodes = useMemo(
+    () => [
+      ...new Set([...(lastRow?.stocks.map((s) => s.code) ?? []), ...holdings.map((h) => h.code)]),
+    ],
+    [lastRow, holdings],
+  )
+  const { quotes, fetchedAt, isLive } = useLiveQuotes(universeCodes, true)
+  const priceOf = (code: string): number | null => quotes.get(code)?.price ?? null
+  const momentumIsLive = isLive && MOMENTUM_KEYS.has(p.factor) && momentumSkip({ ...p }) === 0
+
   const model = useMemo(() => {
     if (!lastRow) return null
     const baselines = bl.status === 'ready' ? bl.data : []
     const regime =
       regimeByDate([lastRow.date], baselines, p.regime, p.regimeDays).get(lastRow.date) ?? 'bull'
-    const targets = regime === 'bear' ? [] : rankTargets(lastRow, { ...p, costBps: 0 })
+    const rankRow = momentumIsLive ? withLiveMomentum(lastRow, { ...p }, priceOf) : lastRow
+    const targets = regime === 'bear' ? [] : rankTargets(rankRow, { ...p, costBps: 0 })
     const isRebalDay = isRebalanceDay(
       rows.map((r) => r.date),
       lastRow.date,
@@ -80,7 +95,7 @@ export function SignalPage() {
     const prevClose = (code: string): number | null =>
       prevRow?.stocks.find((s) => s.code === code)?.close ?? null
     const factorOf = (code: string): number | null => {
-      const s = lastRow.stocks.find((x) => x.code === code)
+      const s = rankRow.stocks.find((x) => x.code === code)
       if (!s) return null
       const v = (s as Record<string, unknown>)[METRICS[p.factor].field]
       return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -100,17 +115,16 @@ export function SignalPage() {
       lastDate: lastRow.date,
       nextRebal,
     }
-  }, [lastRow, prevRow, rows, bl, p, holidays])
+  }, [lastRow, prevRow, rows, bl, p, holidays, momentumIsLive, quotes])
 
-  const codes = useMemo(
-    () => [
-      ...new Set([...(model?.targets.map((t) => t.code) ?? []), ...holdings.map((h) => h.code)]),
-    ],
-    [model, holdings],
-  )
-  const { quotes, isLive } = useLiveQuotes(codes, true)
   const px = (code: string): number | null =>
     quotes.get(code)?.price ?? lastRow?.stocks.find((s) => s.code === code)?.close ?? null
+  const liveTime =
+    fetchedAt?.toLocaleTimeString('zh-TW', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Taipei',
+    }) ?? ''
 
   if (hist.status === 'loading') return <Layout>載入中…</Layout>
   if (!model || !lastRow)
@@ -171,7 +185,15 @@ export function SignalPage() {
   const stopExecNote = p.stopExecNext ? '（隔一交易日收盤出場）' : '（觸發當日收盤出場）'
 
   return (
-    <Layout asOf={isLive ? '盤中報價（約 15 分鐘延遲）' : `依 ${model.lastDate} 收盤`}>
+    <Layout
+      asOf={
+        isLive
+          ? `現價 Yahoo ${liveTime}（約 15–20 分延遲）${
+              momentumIsLive ? '· 動能已納入現價' : `· 動能為 ${model.lastDate} 收盤`
+            }`
+          : `依 ${model.lastDate} 收盤`
+      }
+    >
       <div className={styles.summary}>
         <b>策略</b>：{factorLabel} 高者佳 · 市值前 {p.poolTopN} 選前 {p.topN} 檔 ·{' '}
         {p.rebalance === 'M' ? '每月' : '每週'}再平衡 ·{' '}
@@ -238,7 +260,8 @@ export function SignalPage() {
         <h3>
           目標持股{' '}
           <span className={styles.sub}>
-            依 {factorLabel} 排名（{model.lastDate} 收盤資料）
+            依 {factorLabel} 排名（
+            {momentumIsLive ? `現價 Yahoo ${liveTime}` : `${model.lastDate} 收盤資料`}）
           </span>
         </h3>
         {model.targets.length === 0 ? (

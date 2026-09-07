@@ -12,11 +12,14 @@ import type { OperatorPlan } from '../../lib/plan'
 import {
   factorRanking,
   isRebalanceDay,
+  MOMENTUM_KEYS,
+  momentumSkip,
   nextRebalanceDate,
   rankTargets,
   regimeByDate,
   shouldSwap,
   withCustomMomentum,
+  withLiveMomentum,
   type BacktestConfig,
 } from '../backtest/engine'
 
@@ -84,6 +87,10 @@ export interface ActionRow {
 export interface OperatorReport {
   /** 依據的收盤資料日 */
   asOfDate: string
+  /** 目標 / 持股的現價來自即時報價（priceOf 有命中） */
+  priceIsLive: boolean
+  /** 排名用的動能已用即時價重算（因子是 skip=0 動能且有即時價） */
+  momentumIsLive: boolean
   /** 策略是否已上線（asOfDate >= plan.startDate） */
   started: boolean
   startDate: string
@@ -175,11 +182,17 @@ export function buildOperatorReport(
   const cfg = cfgOf(plan)
   // 自訂動能窗：把因子欄位換成重算值，排名一律用這份
   const fRows = withCustomMomentum(rows, cfg)
-  const fLast = fRows.at(-1)!
+  const fRowsLast = fRows.at(-1)!
   const custom = (cfg.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(cfg.factor)
   const factorLabel = custom
     ? `自訂動能 ${cfg.momDays}${(cfg.momSkip ?? 0) > 0 ? `-${cfg.momSkip}` : ''} 日`
     : METRICS[cfg.factor].label
+
+  // 即時價：排名因子是「結束在今天」的動能（skip=0）時，用現價重算動能後排名
+  const anyLive = fRowsLast.stocks.some((s) => priceOf(s.code) != null)
+  const priceIsLive = anyLive
+  const momentumIsLive = anyLive && MOMENTUM_KEYS.has(cfg.factor) && momentumSkip(cfg) === 0
+  const fLast: HistoryRow = momentumIsLive ? withLiveMomentum(fRowsLast, cfg, priceOf) : fRowsLast
 
   const regimeMap = regimeByDate(
     [prevRow?.date ?? lastRow.date, lastRow.date],
@@ -371,6 +384,8 @@ export function buildOperatorReport(
 
   return {
     asOfDate: lastRow.date,
+    priceIsLive,
+    momentumIsLive,
     started,
     startDate: plan.startDate,
     factorLabel,

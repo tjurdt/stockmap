@@ -12,6 +12,11 @@ const money = (v: number | null | undefined) => (v == null ? '—' : Math.round(
 export function ReportView({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
   const fmt = METRICS[factor].fmt
   const flabel = report.factorLabel
+  const asOfNote = report.momentumIsLive
+    ? '依現價（Yahoo，動能已重算）'
+    : report.priceIsLive
+      ? `依 ${report.asOfDate} 收盤動能・現價 Yahoo`
+      : `依 ${report.asOfDate} 收盤`
 
   return (
     <>
@@ -89,7 +94,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
         <h3>
           目標持股{' '}
           <span className={styles.sub}>
-            依 {flabel} 排名（{report.asOfDate} 收盤）
+            依 {flabel} 排名（{asOfNote}）
           </span>
         </h3>
         {report.targets.length === 0 ? (
@@ -189,7 +194,7 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
           <h3>
             動能排行 vs 我的持股{' '}
             <span className={styles.sub}>
-              {flabel} · 依 {report.asOfDate} 收盤（動能只在收盤更新）
+              {flabel} · {asOfNote}
             </span>
           </h3>
           <div style={{ overflowX: 'auto' }}>
