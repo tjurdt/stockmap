@@ -28,15 +28,32 @@ const configured = (import.meta.env.VITE_QUOTE_URL ?? '').trim()
 export const QUOTE_URL: string = configured === 'off' ? '' : configured || DEFAULT_QUOTE_URL
 export const liveAvailable = QUOTE_URL !== ''
 
+/** worker 單次上限 50 檔 → 超過就分批打、合併。 */
+const BATCH = 45
+
 export async function fetchLiveQuotes(codes: string[]): Promise<Map<string, LiveQuote>> {
   if (!QUOTE_URL) throw new Error('盤中報價未設定')
-  const res = await fetch(`${QUOTE_URL}?codes=${codes.join(',')}`)
-  if (!res.ok) throw new Error(`盤中報價 HTTP ${res.status}`)
-  const { quotes } = responseSchema.parse(await res.json())
-  return new Map(quotes.filter((q) => q.code).map((q) => [q.code, q]))
+  const batches: string[][] = []
+  for (let i = 0; i < codes.length; i += BATCH) batches.push(codes.slice(i, i + BATCH))
+  const results = await Promise.all(
+    batches.map(async (b) => {
+      const res = await fetch(`${QUOTE_URL}?codes=${b.join(',')}`)
+      if (!res.ok) throw new Error(`盤中報價 HTTP ${res.status}`)
+      return responseSchema.parse(await res.json()).quotes
+    }),
+  )
+  return new Map(
+    results
+      .flat()
+      .filter((q) => q.code)
+      .map((q) => [q.code, q]),
+  )
 }
 
-/** 台股盤中 + 收盤後 Yahoo 資料落定的緩衝：週一~五 09:00–14:00（Asia/Taipei）。 */
+/**
+ * 台股「價格還在跳動」的時段：週一~五 09:00–14:00（Asia/Taipei）。
+ * 只用來決定輪詢快慢 —— 盤後 `useLiveQuotes` 仍會抓（Yahoo 會回最近一次收盤）。
+ */
 export function isMarketHours(now: Date = new Date()): boolean {
   const tpe = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }))
   const day = tpe.getDay()

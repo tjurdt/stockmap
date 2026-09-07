@@ -156,6 +156,43 @@ export function isCustomMomentum(cfg: Pick<BacktestConfig, 'factor' | 'momDays'>
   return MOMENTUM_KEYS.has(cfg.factor) && (cfg.momDays ?? 0) > 0
 }
 
+/** 因子的動能有效 skip（自訂 → momSkip；m121 → 20；其餘 → 0）；非動能因子回 null。 */
+export function momentumSkip(
+  cfg: Pick<BacktestConfig, 'factor' | 'momDays' | 'momSkip'>,
+): number | null {
+  if (!MOMENTUM_KEYS.has(cfg.factor)) return null
+  if (isCustomMomentum(cfg)) return Math.max(0, Math.round(cfg.momSkip ?? 0))
+  return cfg.factor === 'm121' ? 20 : 0
+}
+
+/**
+ * 把某列的動能欄位依即時價重算 —— 只在「動能窗結束在今天」（skip=0）時有意義。
+ * 數學：momX% = close/close_Xago − 1 → liveMomX% = (1+momX/100) × (live/close) − 1。
+ * 同時把該檔的 close / adjClose 換成即時價。純函式。
+ */
+export function withLiveMomentum(
+  row: HistoryRow,
+  cfg: Pick<BacktestConfig, 'factor'>,
+  priceOf: (code: string) => number | null,
+): HistoryRow {
+  const field = METRICS[cfg.factor].field
+  return {
+    ...row,
+    stocks: row.stocks.map((s) => {
+      const live = priceOf(s.code)
+      if (live == null || s.close == null || s.close <= 0) return s
+      const ratio = live / s.close
+      const m = (s as Record<string, unknown>)[field]
+      return {
+        ...s,
+        close: live,
+        adjClose: (s.adjClose ?? s.close) * ratio,
+        [field]: typeof m === 'number' ? ((1 + m / 100) * ratio - 1) * 100 : m,
+      }
+    }),
+  }
+}
+
 /**
  * 還原價序列（由舊到新）的區間報酬率 (%)。對齊 pipeline `factors.py::total_return`：
  * start = series[-(lookback+1)]、end = series[-(1+skip)]（跳過近期 → 動能窗少掉 skip 天，同 12-1 定義）。
