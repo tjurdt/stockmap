@@ -1,5 +1,5 @@
 {
-  "$comment": "台股市值前 60 大 — 由 twse_pipeline.universe_rank 每週重排，勿手改。前端顯示前 displayCount 檔；其餘供回測選股池。sharesOutstandingM = 已發行普通股數（百萬股）。",
+  "$comment": "台股市值前 60 大 — 由 twse_pipeline.universe_rank 每交易日重排，勿手改。前端顯示前 displayCount 檔（snapshot 另依當日市值重排）；其餘供回測選股池。sharesOutstandingM = 已發行普通股數（百萬股）。",
   "rankedAt": "2026-09-07",
   "displayCount": 20,
   "constituents": [

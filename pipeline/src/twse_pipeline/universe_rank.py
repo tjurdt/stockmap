@@ -1,7 +1,7 @@
-"""動態市值前 N 大重排。
+"""動態市值前 N 大重排（每交易日盤後）。
 
 用 STOCK_DAY_ALL（全市場收盤）+ t187ap03_L（全上市公司已發行股數）算每檔市值，取前 N。
-進出場門檻：現有成員名次 ≤ keep_until_rank 就保留，避免邊界股每週來回跳。
+進出場門檻：現有成員名次 ≤ keep_until_rank 就保留，避免邊界股天天來回跳。
 
   python -m twse_pipeline.universe_rank            # 重排並寫回 schema/universe.json
 """
@@ -90,8 +90,8 @@ def rank(
 def write_universe(result: RankResult, path=UNIVERSE_SCHEMA) -> None:
     payload = {
         "$comment": (
-            f"台股市值前 {TOP_N} 大 — 由 twse_pipeline.universe_rank 每週重排，勿手改。"
-            f"前端顯示前 displayCount 檔；其餘供回測選股池。"
+            f"台股市值前 {TOP_N} 大 — 由 twse_pipeline.universe_rank 每交易日重排，勿手改。"
+            f"前端顯示前 displayCount 檔（snapshot 另依當日市值重排）；其餘供回測選股池。"
             "sharesOutstandingM = 已發行普通股數（百萬股）。"
         ),
         "rankedAt": result.ranked_at,

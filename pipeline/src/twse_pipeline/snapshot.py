@@ -58,6 +58,9 @@ def build_snapshot(
         )
         for c in universe
     ]
+    # 依「當日收盤」市值重排 —— 前端顯示的前 N 檔永遠是今天的市值排序，不是上次成員重排時的。
+    # 成員名單本身仍由 universe_rank 管（每交易日重排、含進出場門檻）。
+    stocks.sort(key=lambda s: (s["mcap"] is None, -(s["mcap"] or 0.0)))
     snapshot = {
         "schemaVersion": SCHEMA_VERSION,
         "asOf": as_of,

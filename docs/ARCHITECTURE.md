@@ -63,7 +63,7 @@
 
 | 檔 | 產生者 | 內容 | 消費者 |
 | --- | --- | --- | --- |
-| `schema/universe.json` | `universe_rank`（每週一）| 市值**前 60**（`TOP_N`），進出場門檻 `KEEP_UNTIL_RANK=70` | `daily` 的 `latest.json`、前端顯示前 `displayCount`(20) 檔 |
+| `schema/universe.json` | `universe_rank`（**每交易日盤後**）| 市值**前 60**（`TOP_N`），進出場門檻 `KEEP_UNTIL_RANK=70` | `daily` 的 `latest.json`（`stocks` 再依當日收盤市值重排）、前端顯示前 `displayCount`(20) 檔 |
 | `schema/backtest_universe.json` | `universe_history`（手動、每 3–6 月）| 過去 N 年**每週市值前 60 的聯集**（~100–140 檔）；解決存活者偏誤 | `backfill` deep 的 `factors-*.jsonl` |
 
 `universe_history` 對過去 N 年每個週五打一次 TWSE `MI_INDEX`（一次給全市場收盤），用現在的股數粗估市值
