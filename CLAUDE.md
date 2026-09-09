@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `twse_pipeline.daily` | `fetch-twse`（每交易日多次）| FinMind 收盤（TWSE STOCK_DAY_ALL 常慢一天，備援）+ TWSE BWIBBU 估值 → 更新 `data/prices.json` → 寫 `data/latest.json` + append `data/history/` + 重建 `data/baselines.jsonl`（大盤報酬指數 / 0050 / 00632R）與 `data/calendar.json`（台股休市日曆） |
 | `twse_pipeline.backfill` | `backfill`（手動）| FinMind 原始價 + 配息還原 → 回填約一年 `prices.json` + 整檔重建 `data/history/` |
-| `twse_pipeline.universe_rank` | `rank-universe`（每週一）| 全市場市值 → 重排 `schema/universe.json`（`TOP_N`=60，前端顯示 `displayCount`=20 檔，其餘供回測選股池），新進榜股自動 backfill（需 `FINMIND_TOKEN`）|
+| `twse_pipeline.universe_rank` | `rank-universe`（每交易日盤後）| 全市場市值 → 重排 `schema/universe.json`（`TOP_N`=60，進出場門檻 `KEEP_UNTIL_RANK`=70；前端顯示 `displayCount`=20 檔，其餘供回測選股池），新進榜股自動 backfill（需 `FINMIND_TOKEN`）。`daily` 另把 `latest.json` 的 `stocks` 依「當日收盤市值」重排。|
 
 資料流：`Actions cron → pipeline 抓 TWSE OpenAPI → 寫 data/ → commit → deploy.yml build web + 併入 data/ → GitHub Pages`。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
