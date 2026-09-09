@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { Layout } from '../../components/Layout'
 import { useAsync } from '../../hooks/useAsync'
+import { useLiveQuotes } from '../../hooks/useLiveQuotes'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { loadBaselines } from '../../lib/baselines'
 import { loadCalendar, tradingDayOrdinal } from '../../lib/calendar'
@@ -47,10 +48,27 @@ export function PlannerPage() {
 
   const planJson = useMemo(() => JSON.stringify(toPlanJson(plan), null, 2), [plan])
 
+  // 即時價：持股 + 最新一列的整個 universe（動能排行要用現價重排）
+  const liveCodes = useMemo(() => {
+    const set = new Set(plan.holdings.map((h) => h.code))
+    if (hist.status === 'ready') {
+      for (const st of hist.data.at(-1)?.stocks ?? []) set.add(st.code)
+    }
+    return [...set]
+  }, [plan.holdings, hist])
+  const { quotes, fetchedAt, isLive } = useLiveQuotes(liveCodes, true)
+  const priceOf = useMemo(() => (code: string) => quotes.get(code)?.price ?? null, [quotes])
+  const liveTime =
+    fetchedAt?.toLocaleTimeString('zh-TW', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Taipei',
+    }) ?? ''
+
   const report = useMemo(() => {
     if (hist.status !== 'ready' || bl.status !== 'ready') return null
-    return buildOperatorReport(hist.data, bl.data, toPlanJson(plan), names, holidays)
-  }, [hist, bl, plan, names, holidays])
+    return buildOperatorReport(hist.data, bl.data, toPlanJson(plan), names, holidays, priceOf)
+  }, [hist, bl, plan, names, holidays, priceOf])
 
   const copy = () => {
     navigator.clipboard.writeText(planJson).then(
@@ -63,9 +81,16 @@ export function PlannerPage() {
   }
 
   const strategyQuery = encodeParams(s)
+  const staleAsOf =
+    snap.status === 'ready' && isLive && report && snap.data.asOf < report.asOfDate
+      ? snap.data.asOf
+      : null
+  const asOfLine = isLive
+    ? `現價 Yahoo ${liveTime}（約 15–20 分延遲）· 每晚提醒信讀 GitHub secret`
+    : '操作計畫存在這台裝置；每晚提醒信讀 GitHub secret'
 
   return (
-    <Layout asOf="操作計畫存在這台裝置；每晚提醒信讀 GitHub secret">
+    <Layout asOf={asOfLine}>
       <div className={styles.grid}>
         <div className={styles.panel}>
           <h3>設定</h3>
@@ -73,6 +98,17 @@ export function PlannerPage() {
           {report && (
             <p className={styles.nextDay}>
               下一個台股交易日：<b>{report.nextTradingDay}</b>
+              {isLive && (
+                <>
+                  {' · '}現價 Yahoo <b>{liveTime}</b>
+                  {report.momentumIsLive && '（動能已納入現價）'}
+                </>
+              )}
+            </p>
+          )}
+          {staleAsOf && (
+            <p className={styles.hint}>
+              ⚠️ 管線資料停在 {staleAsOf}；現價與 skip=0 動能已改用 Yahoo 即時。
             </p>
           )}
 

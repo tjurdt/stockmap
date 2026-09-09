@@ -5,11 +5,13 @@ import type { HistoryRow } from '../../lib/history'
 import {
   isRebalanceDay,
   momentumPct,
+  momentumSkip,
   nextRebalanceDate,
   rebalanceDates,
   regimeByDate,
   runBacktest,
   withCustomMomentum,
+  withLiveMomentum,
 } from './engine'
 
 function row(
@@ -658,5 +660,36 @@ describe('withCustomMomentum', () => {
       execLagDays: 0,
     })
     expect(r.holdings.at(-1)!.codes).toEqual(['2222']) // 後段短窗動能最強
+  })
+})
+
+describe('momentumSkip', () => {
+  const c = { topN: 1, rebalance: 'M' as const, weighting: 'equal' as const, costBps: 0 }
+  it('標準因子', () => {
+    expect(momentumSkip({ ...c, factor: 'm20' })).toBe(0)
+    expect(momentumSkip({ ...c, factor: 'm60' })).toBe(0)
+    expect(momentumSkip({ ...c, factor: 'm121' })).toBe(20)
+    expect(momentumSkip({ ...c, factor: 'pe' })).toBeNull()
+  })
+  it('自訂窗用 momSkip', () => {
+    expect(momentumSkip({ ...c, factor: 'm121', momDays: 60, momSkip: 5 })).toBe(5)
+    expect(momentumSkip({ ...c, factor: 'm20', momDays: 40 })).toBe(0)
+  })
+})
+
+describe('withLiveMomentum', () => {
+  const r = row('2026-03-01', [
+    { code: '1111', adj: 100, f: 10 }, // mom20 = 10%
+    { code: '2222', adj: 100, f: -20 },
+  ])
+
+  it('skip=0 動能依現價重算：liveMom = (1+m/100)*ratio - 1', () => {
+    const out = withLiveMomentum(r, { factor: 'm20' }, (code) => (code === '1111' ? 110 : null))
+    // 1111：ratio 1.1 → (1.10)*1.1 - 1 = 0.21 → 21%
+    expect(out.stocks[0]!.mom20).toBeCloseTo(((1 + 0.1) * 1.1 - 1) * 100, 6)
+    expect(out.stocks[0]!.close).toBe(110)
+    // 2222 沒現價 → 不動
+    expect(out.stocks[1]!.mom20).toBe(-20)
+    expect(out.stocks[1]!.close).toBe(100)
   })
 })

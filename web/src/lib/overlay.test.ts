@@ -29,12 +29,15 @@ const q = (over: Partial<LiveQuote>): LiveQuote => ({
 })
 
 describe('applyLive', () => {
-  it('overrides close, recomputes chgPct and scales mcap; keeps momentum', () => {
+  it('overrides close, recomputes chgPct, scales mcap, bumps m20/m60, keeps m121', () => {
     const s = applyLive([base], new Map([['2330', q({})]]))[0]!
     expect(s.close).toBe(1100)
     expect(s.chgPct).toBeCloseTo(10)
     expect(s.mcap).toBeCloseTo(27500) // 25000 * 1100/1000
-    expect(s.mom121).toBe(5) // 動能不動
+    // ratio = 1.1；liveMom20 = (1+0.03)*1.1 - 1 = 0.133 → 13.3%
+    expect(s.mom20).toBeCloseTo(((1 + 0.03) * 1.1 - 1) * 100)
+    expect(s.mom60).toBeCloseTo(((1 + 0.04) * 1.1 - 1) * 100)
+    expect(s.mom121).toBe(5) // 12-1 動能：今日價不影響
   })
 
   it('leaves a stock untouched when no quote or null price', () => {
