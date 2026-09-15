@@ -1,5 +1,4 @@
-/** 使用者實際持股 —— 存在瀏覽器 localStorage（每台裝置各自一份，不上傳）。 */
-import { useCallback, useState } from 'react'
+/** 使用者實際持股的型別 —— 持股本身現在由交易日誌推算（見 `lib/trades.ts`）。 */
 
 export interface Position {
   code: string
@@ -8,37 +7,30 @@ export interface Position {
   entryDate: string // YYYY-MM-DD
 }
 
-const KEY = 'stockmap:holdings.v1'
+/** 舊「操作訊號」頁（已併入 /plan）用過的 localStorage key。 */
+const LEGACY_KEY = 'stockmap:holdings.v1'
 
-function read(): Position[] {
+/**
+ * 讀舊版持股清單，供第一次開新版時遷移成交易日誌。
+ * 讀不到 / 格式不對就回空陣列（不讓壞資料擋住頁面）。
+ */
+export function readLegacyHoldings(): Position[] {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = localStorage.getItem(LEGACY_KEY)
     if (!raw) return []
-    const arr = JSON.parse(raw)
-    return Array.isArray(arr)
-      ? arr.filter(
-          (p) =>
-            typeof p?.code === 'string' &&
-            typeof p?.shares === 'number' &&
-            typeof p?.entryPrice === 'number',
-        )
-      : []
+    const arr: unknown = JSON.parse(raw)
+    if (!Array.isArray(arr)) return []
+    return arr.filter(
+      (p): p is Position =>
+        typeof p?.code === 'string' &&
+        /^\d{4}$/.test(p.code) &&
+        typeof p?.shares === 'number' &&
+        p.shares > 0 &&
+        typeof p?.entryPrice === 'number' &&
+        p.entryPrice > 0 &&
+        typeof p?.entryDate === 'string',
+    )
   } catch {
     return []
   }
-}
-
-export function useHoldings() {
-  const [holdings, setHoldings] = useState<Position[]>(read)
-
-  const save = useCallback((next: Position[]) => {
-    setHoldings(next)
-    try {
-      localStorage.setItem(KEY, JSON.stringify(next))
-    } catch {
-      /* 私密視窗 / 停用儲存 → 至少這個 session 還在 */
-    }
-  }, [])
-
-  return [holdings, save] as const
 }

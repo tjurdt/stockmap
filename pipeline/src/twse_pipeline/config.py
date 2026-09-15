@@ -1,6 +1,7 @@
 """成分股設定。
 
-schema/universe.json          — 市值前 60，由 universe_rank 每週重排。前端顯示前 displayCount 檔。
+schema/universe.json          — 市值前 60，由 universe_rank 每交易日重排。前端顯示前 displayCount
+                                檔（snapshot 另依當日市值重排順序）。
 schema/backtest_universe.json — 過去 N 年曾進市值前段的股票聯集，由 universe_history 產生（可選）。
                                 回測選股池用；沒有此檔就退回 universe.json。
 """

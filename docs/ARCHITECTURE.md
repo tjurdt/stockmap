@@ -63,7 +63,7 @@
 
 | 檔 | 產生者 | 內容 | 消費者 |
 | --- | --- | --- | --- |
-| `schema/universe.json` | `universe_rank`（每週一）| 市值**前 60**（`TOP_N`），進出場門檻 `KEEP_UNTIL_RANK=70` | `daily` 的 `latest.json`、前端顯示前 `displayCount`(20) 檔 |
+| `schema/universe.json` | `universe_rank`（**每交易日盤後**）| 市值**前 60**（`TOP_N`），進出場門檻 `KEEP_UNTIL_RANK=70` | `daily` 的 `latest.json`（`stocks` 再依當日收盤市值重排）、前端顯示前 `displayCount`(20) 檔 |
 | `schema/backtest_universe.json` | `universe_history`（手動、每 3–6 月）| 過去 N 年**每週市值前 60 的聯集**（~100–140 檔）；解決存活者偏誤 | `backfill` deep 的 `factors-*.jsonl` |
 
 `universe_history` 對過去 N 年每個週五打一次 TWSE `MI_INDEX`（一次給全市場收盤），用現在的股數粗估市值
@@ -106,21 +106,46 @@
 `nextRebalanceDate`（即時 / 提醒信，用 `data/calendar.json` 的休市日）共用同一套邏輯。
 「跟上線日同順位」= `tradingDayOrdinal(startDate)`，讓實單和回測對齊。
 
-`web/src/features/signal/report.ts` 的 `buildOperatorReport(history, baselines, plan, names)` 是純函式，
-吃一份操作計畫（策略 + 上線日 + 目前持股）吐出「今天收盤後該知道的一切」。三處消費：訊號頁、
-操作計畫頁預覽（`ReportView.tsx`）、每晚提醒信（`web/scripts/operator-report.ts`，`npm run report`，
-以 `tsx` 執行、讀 committed `data/` + `OPERATOR_PLAN` env、寫 `web/tmp/email.{html,txt}`）。
+`web/src/features/signal/report.ts` 的 `buildOperatorReport(history, baselines, plan, names, opts)`
+是純函式，吃一份操作計畫（策略 + 上線日 + 交易日誌推算出的持股）吐出「到今天為止該知道的一切」，
+包含兩個給人看的結論欄位：
 
-計畫本身不 commit（含持股成本）：網站端存 localStorage，寄信端存 GitHub secret `OPERATOR_PLAN`。
+- `verdict` —— 明天要不要動手、一句話結論 + 補充（網站大字、提醒信主旨共用）。
+- `swapWatch` —— 手上最弱的是哪檔、挑戰者要達到多少因子值、最快哪天換得動（最短持有到期）。
+
+兩處消費：操作計畫頁 `/plan`（`features/planner/`）與每晚提醒信
+（`web/scripts/operator-report.ts`，`npm run report`，以 `tsx` 執行、讀 committed `data/` +
+`OPERATOR_PLAN` env、寫 `web/tmp/email.{html,txt}`）。舊的 `/signal` 頁已併入 `/plan`（保留轉址）。
+
+**規則優先序**（`runBacktest` 的迴圈順序，`report.ts` 檔頭也寫了同一份）：
+停損 → `regimeExit='immediate'` 轉空清空 → **排程換股日** → 動能換股。
+`swapMinHoldDays` 只是動能換股的閘門；排程換股日一到就照當日排名整批換，最短持有擋不住。
+`pipeline` 無關，但 `report.test.ts` 有測試釘住這個先後順序。
+
+計畫本身不 commit（含持股成本）：網站端存 localStorage（含逐筆交易日誌 `lib/trades.ts`，
+持股 / 加權成本 / 這一段持有的起算日都由它推算），寄信端存 GitHub secret `OPERATOR_PLAN`。
 `notify` workflow 每交易日 19:00 TPE 跑腳本、用 `dawidd6/action-send-mail` + Gmail SMTP 寄出；
 缺 secret 就不寄。
 
-## 盤中報價
+## 報價與「暫定當日資料」
 
 純靜態站被 CORS 擋在報價來源外。`worker/`（Cloudflare Worker）在邊緣代理 **Yahoo Finance v8 chart**
 （`<code>.TW`）並加 CORS header —— TWSE 官方 MIS 端點（20 秒延遲）會擋 Cloudflare 機房 IP（回 520），
-只能改用 Yahoo，盤中約 15–20 分鐘延遲。前端 `lib/live.ts` 在交易時段每 20 秒輪詢，
-`lib/overlay.ts` 只把盤中價疊到 `close`/`chgPct`/`mcap`，動能維持收盤值（需完整序列）。
+只能改用 Yahoo，盤中約 15–20 分鐘延遲。回傳含 `date`（該筆報價所屬的台股交易日，台北時區）。
+
+台股 13:30 收盤，但 `data/` 要等 `fetch-twse` 抓到、commit、`deploy` 重建 Pages 才會更新（常是晚上）。
+若只在交易時段抓報價，**收盤到入庫之間整個下午都會退回前一天**。所以：
+
+- `lib/live.ts::marketPhase` 分 `open`（平日 09:00–14:00）/ `pre` / `closed`；
+  `hooks/useLiveQuotes` 盤中 20 秒、盤後 10 分鐘各抓一次（假日照抓 —— 抓到的是最近一個交易日收盤）。
+- `lib/liveRow.ts::withProvisionalRow` 在報價日期**晚於**因子歷史最後一列時，補一列暫定當日列：
+  價 / 還原價 / 市值 / PE / PB 依「現價 ÷ 前一列收盤」等比例推算（殖利率成反比），
+  動能依補完的還原價序列用 `lib/momentum.ts` 重算（公式同 `factors.py`）。沒報價的個股原值往後帶。
+- `hooks/useLiveMarket` 是唯一入口，回測頁 / 操作計畫頁都吃它；散佈圖與排行榜走
+  `hooks/useLiveSnapshot`（只載最近 ~300 列歷史，不必抓整段）。
+- 誤差：除權息當日的還原價會有一天誤差；`data/` 若落後好幾個交易日，只會補「最新報價那天」那一列，
+  中間缺的交易日不會補回來。UI 一律用 `freshnessLabel` 標示「暫定 / 官方資料到哪天」。
+
 `VITE_QUOTE_URL=off` 可停用；不設則用內建的 worker 網址。
 
 ## 已知取捨

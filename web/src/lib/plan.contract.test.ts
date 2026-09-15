@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import schema from '../../../schema/operator_plan.schema.json'
 import { DEFAULT_PARAMS } from '../features/backtest/strategyParams'
-import { operatorPlanSchema, positionSchema, strategySchema, toPlanJson } from './plan'
+import {
+  holdingsOf,
+  operatorPlanSchema,
+  positionSchema,
+  strategySchema,
+  toPlanJson,
+  tradeSchema,
+} from './plan'
 
 // 前端 zod schema 與管線 / CI 用的 JSON Schema 必須是同一份契約。drift 時此測試會紅。
 
@@ -29,6 +36,12 @@ describe('operator plan 契約：zod ↔ schema/operator_plan.schema.json', () =
     expect(Object.keys(strategySchema.shape).sort()).toEqual(Object.keys(DEFAULT_PARAMS).sort())
   })
 
+  it('trade 欄位一致', () => {
+    expect(Object.keys(tradeSchema.shape).sort()).toEqual(
+      Object.keys(schema.definitions.trade.properties).sort(),
+    )
+  })
+
   it('schemaVersion 常數一致', () => {
     expect(schema.properties.schemaVersion.const).toBe(1)
   })
@@ -41,8 +54,30 @@ describe('operator plan 契約：zod ↔ schema/operator_plan.schema.json', () =
     const plan = toPlanJson({
       startDate: '2026-09-15',
       strategy: DEFAULT_PARAMS,
-      holdings: [{ code: '2330', shares: 1000, entryPrice: 2400, entryDate: '2026-09-15' }],
+      trades: [
+        { id: 'a1', date: '2026-09-15', code: '2330', side: 'buy', shares: 1000, price: 2400 },
+        { id: 'a2', date: '2026-09-22', code: '2330', side: 'buy', shares: 1000, price: 2500 },
+      ],
     })
     expect(operatorPlanSchema.safeParse(plan).success).toBe(true)
+    // holdings 由交易日誌推算：2000 股、加權平均成本 2450
+    expect(plan.holdings).toEqual([
+      { code: '2330', shares: 2000, entryPrice: 2450, entryDate: '2026-09-15' },
+    ])
+  })
+
+  it('沒有交易日誌時 holdings 是空陣列、不帶 trades 欄位', () => {
+    const plan = toPlanJson({ startDate: '2026-09-15', strategy: DEFAULT_PARAMS, trades: [] })
+    expect(plan.holdings).toEqual([])
+    expect(plan.trades).toBeUndefined()
+    expect(operatorPlanSchema.safeParse(plan).success).toBe(true)
+  })
+
+  it('holdingsOf 的股數四捨五入成整數股', () => {
+    expect(
+      holdingsOf([
+        { id: 'x', date: '2026-09-15', code: '2330', side: 'buy', shares: 1000, price: 2400 },
+      ]),
+    ).toEqual([{ code: '2330', shares: 1000, entryPrice: 2400, entryDate: '2026-09-15' }])
   })
 })

@@ -25,6 +25,10 @@
     "bearHolding": "cash"
   },
   "holdings": [
-    { "code": "2330", "shares": 1000, "entryPrice": 2400, "entryDate": "2026-09-15" }
+    { "code": "2330", "shares": 2000, "entryPrice": 2450, "entryDate": "2026-09-15" }
+  ],
+  "trades": [
+    { "id": "a1", "date": "2026-09-15", "code": "2330", "side": "buy", "shares": 1000, "price": 2400 },
+    { "id": "a2", "date": "2026-09-22", "code": "2330", "side": "buy", "shares": 1000, "price": 2500 }
   ]
 }

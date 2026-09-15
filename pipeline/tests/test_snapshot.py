@@ -38,6 +38,24 @@ def test_build_snapshot_passes_schema():
     assert len(snap["stocks"]) == 2
 
 
+def test_build_snapshot_sorts_stocks_by_current_mcap():
+    # universe 順序：台積電、鴻海。但今天鴻海市值 > 台積電（誇張數字）→ snapshot 應把鴻海排前面
+    day_by_code = {
+        "2330": _day("2330", 10, 0, 1e9),  # mcap 10*25930/100
+        "2317": _day("2317", 5000, 0, 1e9),  # mcap 5000*13861/100（大很多）
+    }
+    val_by_code = {"2330": _val("2330"), "2317": _val("2317")}
+    snap = build_snapshot("2026-09-02", UNIVERSE, day_by_code, val_by_code, PriceHistory())
+    assert [s["code"] for s in snap["stocks"]] == ["2317", "2330"]
+
+
+def test_build_snapshot_puts_missing_mcap_last():
+    day_by_code = {"2330": _day("2330", 1000, 0, 1e9)}  # 2317 沒收盤 → mcap None
+    val_by_code = {"2330": _val("2330")}
+    snap = build_snapshot("2026-09-02", UNIVERSE, day_by_code, val_by_code, PriceHistory())
+    assert [s["code"] for s in snap["stocks"]] == ["2330", "2317"]
+
+
 def test_validate_snapshot_rejects_bad_data():
     bad = {
         "schemaVersion": 1,

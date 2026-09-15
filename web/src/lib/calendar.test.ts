@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  addTradingDays,
   isTradingDay,
   nextTradingDay,
   nthTradingDayOfMonth,
   prevTradingDay,
   tradingDayOrdinal,
+  tradingDaysBetween,
   tradingDaysInMonth,
 } from './calendar'
 
@@ -57,5 +59,22 @@ describe('calendar', () => {
   it('tradingDayOrdinal：9/7 是 9 月第 5 個交易日', () => {
     expect(tradingDayOrdinal('2026-09-07', H)).toBe(5)
     expect(tradingDayOrdinal('2026-09-01', H)).toBe(1)
+  })
+})
+
+describe('addTradingDays / tradingDaysBetween', () => {
+  // 2026-09-04 是週五；週末跳過 → 下一個交易日 09-07（週一）
+  const holidays = new Set(['2026-09-08'])
+
+  it('addTradingDays 跳過週末與假日', () => {
+    expect(addTradingDays('2026-09-04', 1, holidays)).toBe('2026-09-07')
+    expect(addTradingDays('2026-09-04', 2, holidays)).toBe('2026-09-09') // 09-08 休市
+    expect(addTradingDays('2026-09-04', 0, holidays)).toBe('2026-09-04')
+  })
+
+  it('tradingDaysBetween 算 from 之後到 to 的交易日數', () => {
+    expect(tradingDaysBetween('2026-09-04', '2026-09-07', holidays)).toBe(1)
+    expect(tradingDaysBetween('2026-09-04', '2026-09-09', holidays)).toBe(2)
+    expect(tradingDaysBetween('2026-09-09', '2026-09-04', holidays)).toBe(0)
   })
 })

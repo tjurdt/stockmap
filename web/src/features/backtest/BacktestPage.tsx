@@ -7,6 +7,7 @@ import { Section } from '../../components/controls/Section'
 import { StepperField } from '../../components/controls/StepperField'
 import { SubGroup } from '../../components/controls/SubGroup'
 import { useAsync } from '../../hooks/useAsync'
+import { useLiveMarket } from '../../hooks/useLiveMarket'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
@@ -91,7 +92,10 @@ export function BacktestPage() {
     return m
   }, [snap])
 
-  const history = state.status === 'ready' ? state.data : []
+  // 官方收盤檔盤後才更新 → 用最新報價補一列暫定的當日資料，回測 / 目標名單才不會停在昨天
+  const officialHistory = state.status === 'ready' ? state.data : []
+  const market = useLiveMarket(officialHistory)
+  const history = market.rows
   const universeSize = useMemo(
     () => history.reduce((m, r) => Math.max(m, r.stocks.length), 0),
     [history],
@@ -587,7 +591,12 @@ export function BacktestPage() {
   )
 
   return (
-    <Layout asOf={span && `回測區間 ${span}`}>
+    <Layout
+      asOf={
+        span &&
+        `回測區間 ${span}${market.provisionalDate ? `（含 ${market.provisionalDate} 暫定當日資料）` : ''}`
+      }
+    >
       <div className={styles.layout}>
         <details className={styles.panelWrap} open={!isMobile}>
           <summary>⚙ 回測設定</summary>
@@ -602,10 +611,9 @@ export function BacktestPage() {
           {result && view && (
             <>
               <div className={styles.signalCta}>
-                <button onClick={() => navigate(`/signal?${paramsQuery}`)}>
-                  📋 產生操作訊號 →
+                <button onClick={() => navigate(`/plan?${paramsQuery}`)}>
+                  📋 用這組設定做操作計畫 →
                 </button>
-                <button onClick={() => navigate(`/plan?${paramsQuery}`)}>＋ 存成操作計畫 →</button>
                 <button
                   className={styles.lockBtn}
                   disabled={locked.length >= 4}

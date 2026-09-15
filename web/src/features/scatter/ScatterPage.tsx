@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react'
 
 import { Layout } from '../../components/Layout'
-import { useLiveQuotes } from '../../hooks/useLiveQuotes'
+import { useLiveSnapshot } from '../../hooks/useLiveSnapshot'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { useSnapshot } from '../../hooks/useSnapshot'
-import { applyLive } from '../../lib/overlay'
 import { Controls } from './Controls'
 import { FactorScatter, type ScatterOptions } from './FactorScatter'
 import { QuotePanel } from './QuotePanel'
@@ -21,19 +19,17 @@ const DEFAULT_OPTS: ScatterOptions = {
 }
 
 export function ScatterPage() {
-  const state = useSnapshot()
   const [opts, setOpts] = useState<ScatterOptions>(DEFAULT_OPTS)
-  const [wantLive, setWantLive] = useState(false)
+  // 預設開著：官方收盤檔盤後才更新，不抓報價的話整個下午都停在昨天
+  const [wantLive, setWantLive] = useState(true)
   const [showN, setShowN] = useState<number | null>(null) // null = 用 snapshot 預設
   const patch = (p: Partial<ScatterOptions>) => setOpts((o) => ({ ...o, ...p }))
   const isMobile = useMediaQuery('(max-width: 820px)')
 
-  const allStocks = state.status === 'ready' ? state.data.stocks : []
+  const { snap: state, stocks: allStocks, market, asOf: asOfLabel } = useLiveSnapshot(wantLive)
   const limit = showN ?? (state.status === 'ready' ? (state.data.universeDisplayCount ?? 20) : 20)
-  const snapStocks = useMemo(() => allStocks.slice(0, limit), [allStocks, limit])
-  const codes = useMemo(() => snapStocks.map((s) => s.code), [snapStocks])
-  const { quotes, isLive } = useLiveQuotes(codes, wantLive)
-  const stocks = isLive ? applyLive(snapStocks, quotes) : snapStocks
+  const stocks = useMemo(() => allStocks.slice(0, limit), [allStocks, limit])
+  const isLive = market.isLive
 
   if (state.status === 'error') {
     return (
@@ -51,19 +47,14 @@ export function ScatterPage() {
     state.status === 'ready' && state.data.universeRankedAt
       ? ` · 名單 ${state.data.universeRankedAt}`
       : ''
-  const asOf =
-    state.status !== 'ready'
-      ? '載入中…'
-      : isLive
-        ? `盤中（約 15 分鐘延遲）· 動能為 ${state.data.asOf} 收盤${ranked}`
-        : `收盤 ${state.data.asOf} · 序列 ${state.data.histLen} 日${ranked}`
+  const asOf = state.status !== 'ready' ? '載入中…' : `${asOfLabel}${ranked}`
   const status =
     state.status !== 'ready'
       ? '載入中…'
-      : isLive
-        ? `盤中 ${quotes.size} 檔`
-        : wantLive
-          ? `已載入 ${stocks.length} 檔 · 盤中報價待交易時段（09:00–14:00）`
+      : market.provisionalDate
+        ? `${market.phase === 'open' ? '盤中' : '最新'}報價 ${market.quoted} 檔 · 動能已補算到 ${market.provisionalDate}（暫定）`
+        : isLive
+          ? `報價 ${market.quotes.size} 檔 · 官方收盤資料已是最新`
           : `已載入 ${stocks.length} 檔`
 
   return (

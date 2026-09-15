@@ -1,38 +1,325 @@
-.grid {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 24px;
-  align-items: start;
-}
-@media (max-width: 860px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
+/* 操作計畫頁 —— 以「明天要幹嘛」為主角，設定與細節往下放。 */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.panel {
+/* ── ① 明天要幹嘛（大字結論） ───────────────────────────── */
+.verdict {
+  border: 2px solid var(--line);
+  background: var(--surface);
+  padding: 18px 20px;
+}
+.verdictAct {
+  border-color: var(--up);
+  background: color-mix(in srgb, var(--up) 7%, var(--surface));
+}
+.verdictCalm {
+  border-color: color-mix(in srgb, var(--down) 45%, var(--line));
+  background: color-mix(in srgb, var(--down) 7%, var(--surface));
+}
+.verdictLabel {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  margin: 0 0 6px;
+}
+.verdictHead {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .verdictHead {
+    font-size: 20px;
+  }
+}
+.verdictDetail {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--ink);
+}
+.verdictWarn {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--up);
+  font-weight: 600;
+}
+
+/* ── 重要日期 chips ───────────────────────────────────── */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.fact {
+  flex: 1 1 160px;
   background: var(--surface);
   border: 1px solid var(--line);
-  padding: 16px;
+  padding: 10px 12px;
 }
-.panel h3 {
-  margin: 0 0 10px;
-  font-size: 15px;
-}
-.field {
-  display: block;
-  font-size: 13px;
+.factLabel {
+  font-size: 12px;
   color: var(--muted);
-  margin: 14px 0 4px;
+  margin: 0 0 3px;
+}
+.factValue {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+.factNote {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+/* ── 一般區塊 ─────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+}
+.card > h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 5px;
+}
+.card > h3 .sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.note {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 8px 0 0;
+}
+
+/* ── ② 待辦步驟 ───────────────────────────────────────── */
+.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+}
+.steps li {
+  counter-increment: step;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.steps li:last-child {
+  border-bottom: none;
+}
+.steps li::before {
+  content: counter(step);
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+  line-height: 22px;
+}
+.tagBuy,
+.tagSell,
+.tagKeep {
+  display: inline-block;
+  min-width: 44px;
+  text-align: center;
+  border-radius: 3px;
+  font-size: 12px;
+  padding: 2px 6px;
+  color: #fff;
+  flex: 0 0 auto;
+}
+.tagBuy {
+  background: var(--up);
+}
+.tagSell {
+  background: var(--down);
+}
+.tagKeep {
+  background: var(--flat);
+}
+.stepSub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* ── 表格 ─────────────────────────────────────────────── */
+.scroll {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th,
+.table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--hair);
+  text-align: right;
+  white-space: nowrap;
+}
+.table th:nth-child(-n + 2),
+.table td:nth-child(-n + 2) {
+  text-align: left;
+}
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.rowOut td {
+  background: color-mix(in srgb, var(--down) 8%, transparent);
+}
+.pos {
+  color: var(--up);
+}
+.neg {
+  color: var(--down);
+}
+.muted {
+  color: var(--muted);
+}
+.ok {
+  color: var(--down);
+  font-weight: 600;
+}
+.warn {
+  color: var(--up);
+  font-weight: 600;
+}
+
+/* ── ⑤ 換股監看 ───────────────────────────────────────── */
+.watchHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.watchBox {
+  flex: 1 1 180px;
+  border: 1px solid var(--line);
+  background: var(--tone-swap);
+  padding: 9px 11px;
+}
+.watchBox p {
+  margin: 0;
+}
+.watchBox .factLabel {
+  margin-bottom: 2px;
+}
+.ruleNote {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.8;
+  background: var(--tone-risk);
+  border: 1px solid var(--line);
+  padding: 8px 11px;
+}
+
+/* ── ⑥ 買賣紀錄 ───────────────────────────────────────── */
+.tradeForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.tradeForm input,
+.tradeForm select {
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.tradeForm input[name='code'] {
+  width: 64px;
+}
+.tradeForm input[type='number'] {
+  width: 92px;
+}
+.tradeForm .name {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 52px;
+}
+.addBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.addBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.iconBtn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 7px;
+}
+.err {
+  font-size: 12.5px;
+  color: var(--up);
+  margin: 0 0 8px;
+}
+
+/* ── 設定 / 進階（摺疊） ──────────────────────────────── */
+.fold {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0 16px;
+}
+.fold > summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.fold[open] > summary {
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 12px;
+}
+.foldBody {
+  padding-bottom: 16px;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 .group {
   border: 1px solid var(--line);
   background: var(--section-bg, var(--surface));
   padding: 2px 12px 12px;
-  margin: 12px 0;
-}
-.group > .field:first-child {
-  margin-top: 10px;
 }
 .gTiming {
   --section-bg: var(--tone-swap);
@@ -40,28 +327,31 @@
 .gStrategy {
   --section-bg: var(--tone-pick);
 }
-.panel input[type='date'],
-.panel input[type='range'] {
-  width: 100%;
-  font: inherit;
+.gExport {
+  --section-bg: var(--tone-cost);
 }
-.panel input[type='date'] {
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+.field {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 12px 0 4px;
 }
 .hint {
   font-size: 12px;
   color: var(--muted);
+  line-height: 1.7;
   margin: 4px 0 0;
 }
-.nextDay {
-  margin: 0 0 4px;
-  font-size: 13px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+.group input[type='date'],
+.group input[type='range'] {
+  width: 100%;
+  font: inherit;
+}
+.group input[type='date'] {
+  padding: 6px 8px;
   border: 1px solid var(--line);
-  padding: 6px 10px;
+  background: #fff;
+  color: var(--ink);
 }
 .radios {
   display: flex;
@@ -94,11 +384,6 @@
   display: inline-block;
   margin-top: 2px;
 }
-.hr {
-  border: none;
-  border-top: 1px solid var(--line);
-  margin: 18px 0 14px;
-}
 .copyBtn {
   width: 100%;
   padding: 9px;
@@ -109,14 +394,14 @@
   font: inherit;
   font-size: 14px;
 }
-.steps {
+.mailSteps {
   font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
   padding-left: 18px;
   margin: 10px 0 0;
 }
-.steps code {
+.mailSteps code {
   background: var(--bg);
   padding: 0 3px;
 }
@@ -133,10 +418,11 @@
   line-height: 1.5;
 }
 
-.preview {
-  min-width: 0;
-}
-.preview > h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
+/* 資料新鮮度 */
+.stale {
+  background: var(--tone-risk);
+  border: 1px solid var(--up);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
 }

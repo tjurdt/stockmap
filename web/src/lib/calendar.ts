@@ -87,3 +87,22 @@ export function tradingDayOrdinal(day: string, holidays: Set<string>): number {
   const idx = days.findIndex((x) => x >= day)
   return idx < 0 ? days.length : idx + 1
 }
+
+/** `from`（不含）之後的第 n 個交易日；n <= 0 回 `from` 本身。 */
+export function addTradingDays(from: string, n: number, holidays: Set<string>): string {
+  let d = from
+  for (let i = 0; i < Math.round(n); i++) d = nextTradingDay(d, holidays)
+  return d
+}
+
+/** `from`（不含）到 `to`（含）之間有幾個交易日；to <= from 回 0。 */
+export function tradingDaysBetween(from: string, to: string, holidays: Set<string>): number {
+  if (to <= from) return 0
+  let n = 0
+  let d = from
+  while (d < to && n < 1000) {
+    d = nextTradingDay(d, holidays)
+    n++
+  }
+  return n
+}

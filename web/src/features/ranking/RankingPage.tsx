@@ -1,28 +1,33 @@
 import { Layout } from '../../components/Layout'
-import { useSnapshot } from '../../hooks/useSnapshot'
-import { METRICS, metricValue, type MetricKey } from '../../lib/metrics'
+import { useLiveSnapshot } from '../../hooks/useLiveSnapshot'
 import { NA } from '../../lib/format'
+import { METRICS, metricValue, type MetricKey } from '../../lib/metrics'
 
 // TODO: 排行榜功能待建。目前先示範以「近月動能」排序，證明資料層可用。
 const SORT_KEY: MetricKey = 'm20'
 
 export function RankingPage() {
-  const state = useSnapshot()
-  if (state.status !== 'ready') {
+  const { snap, stocks, market, asOf } = useLiveSnapshot()
+  if (snap.status !== 'ready') {
     return (
       <Layout>
-        <p>{state.status === 'error' ? '讀不到資料' : '載入中…'}</p>
+        <p>{snap.status === 'error' ? '讀不到資料' : '載入中…'}</p>
       </Layout>
     )
   }
 
-  const ranked = [...state.data.stocks].sort(
+  const ranked = [...stocks].sort(
     (a, b) => (metricValue(b, SORT_KEY) ?? -Infinity) - (metricValue(a, SORT_KEY) ?? -Infinity),
   )
 
   return (
-    <Layout asOf={`收盤 ${state.data.asOf}`}>
+    <Layout asOf={asOf}>
       <h2>依{METRICS[SORT_KEY].label}排行（雛型）</h2>
+      {market.provisionalDate && (
+        <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+          官方收盤檔到 {market.officialDate}；已用 {market.provisionalDate} 的最新報價補算成暫定值。
+        </p>
+      )}
       <ol>
         {ranked.map((s) => {
           const v = metricValue(s, SORT_KEY)

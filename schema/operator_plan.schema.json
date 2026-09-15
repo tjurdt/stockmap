@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tjurdt/stockmap/schema/operator_plan.schema.json",
   "title": "StockMap operator plan",
-  "description": "操作計畫：策略設定 + 上線日 + 目前持股。存在 GitHub Actions secret OPERATOR_PLAN，供每晚提醒信使用。前端 zod schema 見 web/src/lib/plan.ts。",
+  "description": "操作計畫：策略設定 + 上線日 + 交易日誌 / 目前持股。存在 GitHub Actions secret OPERATOR_PLAN，供每晚提醒信使用。前端 zod schema 見 web/src/lib/plan.ts。",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "startDate", "strategy", "holdings"],
@@ -17,7 +17,12 @@
     "holdings": {
       "type": "array",
       "items": { "$ref": "#/definitions/position" },
-      "description": "目前實際持股；空陣列 = 尚未進場"
+      "description": "目前實際持股；空陣列 = 尚未進場。有 trades 時由交易日誌推算，勿手改"
+    },
+    "trades": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/trade" },
+      "description": "交易日誌（選填）。有這個欄位時 holdings 由它推算：股數、加權平均成本、這一段持有的起算日"
     }
   },
   "definitions": {
@@ -94,6 +99,19 @@
           "enum": ["cash", "inverse"],
           "description": "空頭時手上放：現金 / 元大台灣50反1 (00632R)"
         }
+      }
+    },
+    "trade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "date", "code", "side", "shares", "price"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "穩定 id，供編輯 / 刪除" },
+        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "成交日" },
+        "code": { "type": "string", "pattern": "^\\d{4}$" },
+        "side": { "enum": ["buy", "sell"], "description": "買進 / 賣出" },
+        "shares": { "type": "number", "exclusiveMinimum": 0 },
+        "price": { "type": "number", "exclusiveMinimum": 0, "description": "成交價" }
       }
     },
     "position": {

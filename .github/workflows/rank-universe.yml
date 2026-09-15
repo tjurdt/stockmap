@@ -1,9 +1,11 @@
 name: rank-universe
 
-# 每週一盤後重排市值前 20 名單；新進榜股自動回填歷史。
+# 每交易日盤後重排市值前 60 名單；新進榜股自動回填歷史。
+# 分鐘刻意排在 :27（非整點）—— GitHub 排程整點是尖峰、常被延遲甚至丟棄。
+# 漏一天不影響：進出場有 KEEP_UNTIL_RANK=70 門檻，隔天會補上。
 on:
   schedule:
-    - cron: '0 8 * * 1'
+    - cron: '27 8 * * 1-5' # 16:27 TPE，STOCK_DAY_ALL（~14:30 更新）之後
   workflow_dispatch:
 
 permissions:
