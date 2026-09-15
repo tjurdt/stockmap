@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # commit 前要 rebase，需要完整歷史
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -48,4 +50,8 @@ jobs:
           git add schema/universe.json data/
           git diff --staged --quiet && echo "no change" && exit 0
           git commit -m "universe: re-rank $(date -u +%Y-%m-%d)"
-          git push
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push && exit 0
+            echo "push 被搶先，${i}/3 重試…" && sleep 5
+          done
+          exit 1

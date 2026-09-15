@@ -86,4 +86,6 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 
 - 台股慣例：**漲=紅（`--up`）、跌=綠（`--down`）**。色碼一律用 `web/src/styles/tokens.css` 的變數。
 - 前端每個 feature 自成 `web/src/features/<name>/`，共用邏輯才上提到 `lib/` / `components/` / `hooks/`。
+- **畫面上不要堆細字**：一個區塊只留一句白話結論，欄位定義 / 規則細節 / 操作提示一律收進
+  `components/InfoHint`（ⓘ 鈕，點了才展開）。
 - Python：ruff（line-length 100）+ mypy。前端：oxlint + prettier（no semi, single quote, width 100）。

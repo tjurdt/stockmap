@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 
+import { InfoHint } from '../../components/InfoHint'
 import { buildLedger, tradeId, type Trade } from '../../lib/trades'
 import styles from './planner.module.css'
 
@@ -72,6 +73,18 @@ export function TradeLog({
     <div className={styles.card}>
       <h3>
         買賣紀錄 <span className={styles.sub}>成交後回來記一筆，上面的持股與天數就會自己更新</span>
+        <InfoHint label="這份紀錄怎麼用">
+          <ul>
+            <li>
+              加碼同一檔會自動算成<b>加權平均成本</b>，持有天數仍從第一次買進起算。
+            </li>
+            <li>
+              賣光再買回，持有天數<b>重新起算</b>（最短持有、移動停損的高點都跟著重來）。
+            </li>
+            <li>只存在這台裝置的瀏覽器，不會上傳；換裝置請用下方設定裡的「複製設定 JSON」。</li>
+            <li>已實現損益未計手續費與證交稅。</li>
+          </ul>
+        </InfoHint>
       </h3>
 
       {err && <p className={styles.err}>{err}</p>}
@@ -163,12 +176,11 @@ export function TradeLog({
       )}
 
       <p className={styles.note}>
-        已實現損益（賣出的部分，未計手續費與證交稅）：
+        已實現損益：
         <b className={ledger.realized < 0 ? styles.neg : styles.pos}>
           {ledger.realized >= 0 ? '+' : ''}
           {money(ledger.realized)} 元
         </b>
-        　·　紀錄只存在這台裝置的瀏覽器，不會上傳；換裝置請用下方「複製設定 JSON」。
       </p>
     </div>
   )

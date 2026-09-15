@@ -4,6 +4,7 @@
  * 結論（`report.verdict`）與提醒信是同一份資料，這裡只負責把它變成看得懂的畫面：
  * 一句大字 + 編號步驟 + 三個關鍵日期。
  */
+import { InfoHint } from '../../components/InfoHint'
 import type { ActionRow, OperatorReport } from '../signal/report'
 import styles from './planner.module.css'
 
@@ -51,6 +52,7 @@ function StepLine({ a }: { a: ActionRow }) {
 
 export function TomorrowCard({ report }: { report: OperatorReport }) {
   const v = report.verdict
+  const w = report.swapWatch
   // 要動手時才列步驟；停損要單獨列在最前面（不等換股日）
   const todo: ActionRow[] = v.act
     ? [
@@ -92,6 +94,19 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
           <h3>
             明天（{report.nextTradingDay}）的下單清單{' '}
             <span className={styles.sub}>照順序做完就結束</span>
+            <InfoHint label="怎麼下單才貼近回測">
+              <ul>
+                <li>
+                  <b>盤後定價交易（14:00–14:30）</b>：直接用當日收盤價撮合，最貼近回測。
+                </li>
+                <li>
+                  或收盤前 5 分鐘掛限價：買單掛「現價 × 1.005」、賣單掛「現價 × 0.995」—— 成交價仍是
+                  <b>實際收盤價</b>，不是你掛的價。
+                </li>
+                <li>要換的幾檔分開下單；流動性差的用限價、別用市價，成交不完就接受少買一點。</li>
+                <li>台股一張 = 1000 股，小資金湊不齊目標比例是正常的。</li>
+              </ul>
+            </InfoHint>
           </h3>
           <ol className={styles.steps}>
             {todo.map((a) => (
@@ -100,11 +115,6 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
               </li>
             ))}
           </ol>
-          <p className={styles.note}>
-            下單時點：<b>盤後定價交易（14:00–14:30）</b>直接用收盤價撮合，最貼近回測； 或收盤前 5
-            分鐘掛限價（買單掛現價 ×1.005、賣單掛現價 ×0.995），成交價仍是收盤價。 台股一張 = 1000
-            股，湊不齊目標比例是正常的。
-          </p>
         </div>
       )}
 
@@ -122,6 +132,17 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
             {report.isRebalanceDay ? '（今天就是換股日）' : ''}
           </p>
         </div>
+        {w.enabled && w.earliestSwapDate && (
+          <div className={`${styles.fact} ${styles.factSwap}`}>
+            <p className={styles.factLabel}>最快可換股日（最短持有）</p>
+            <p className={styles.factValue}>{w.earliestSwapDate}</p>
+            <p className={styles.factNote}>
+              {w.minHoldReady
+                ? `已過最短持有 ${w.minHoldDays} 交易日，動能達標就換`
+                : `還要 ${w.tradingDaysToSwap} 個交易日才滿 ${w.minHoldDays} 天`}
+            </p>
+          </div>
+        )}
         <div className={styles.fact}>
           <p className={styles.factLabel}>目前持股</p>
           <p className={styles.factValue}>
