@@ -83,19 +83,34 @@ const esc = (s: string) =>
   s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)
 
 function subjectOf(r: OperatorReport): string {
-  const bits: string[] = []
-  if (r.stopActionsNow.length) bits.push(`⚠️停損 ${r.stopActionsNow.length} 檔`)
-  if (r.regimeChangedFrom) bits.push(r.regime === 'bear' ? '轉空頭' : '轉多頭')
-  if (r.isEntryDay) bits.push('上線進場')
-  else if (r.isSignalDay) bits.push('明天換股')
-  if (!r.started) bits.push('策略待上線')
-  if (!bits.length) bits.push('無須動作')
-  return `[台股動力] ${r.asOfDate} · ${bits.join(' · ')}`
+  // 主旨就是結論 —— 手機通知列看一眼就知道明天要不要動手
+  return `[台股動力] ${r.verdict.act ? '❗' : '✅'} ${r.verdict.headline}`
+}
+
+/** 動能換股監看的一句話（沒開 / 沒對象時回空字串）。 */
+function swapWatchLine(r: OperatorReport): string {
+  const w = r.swapWatch
+  if (!w.enabled || !w.weakest || w.thresholdFactor == null) return ''
+  const when = w.minHoldReady
+    ? '已過最短持有，隨時可換'
+    : `${w.earliestSwapDate} 起才可換（最短持有 ${w.minHoldDays} 交易日）`
+  const best = w.challengers[0]
+  const who = best
+    ? `目前最接近的是 ${best.code} ${best.name}（${r.factorLabel} ${best.factor.toFixed(2)}，還差 ${Math.max(0, best.gap).toFixed(2)}）`
+    : '目前排名內沒有可換的對象'
+  return (
+    `手上最弱的是 ${w.weakest.code} ${w.weakest.name}（${w.weakest.factor.toFixed(2)}），` +
+    `挑戰者要達到 ${w.thresholdFactor.toFixed(2)}（高出 ${w.marginPct}%）才換得動；${when}。${who}。`
+  )
 }
 
 function textOf(r: OperatorReport): string {
   const L: string[] = []
   L.push(`台股動力投資 — 操作提醒（依 ${r.asOfDate} 收盤）`)
+  L.push('')
+  L.push(`【明天要做什麼】${r.verdict.headline}`)
+  L.push(`  ${r.verdict.detail}`)
+  L.push('')
   L.push(`策略：${r.strategySummary}`)
   L.push('')
   if (!r.started) L.push(`※ 策略尚未上線（上線日 ${r.startDate}）。下方為上線當天要買的清單。`)
@@ -108,13 +123,15 @@ function textOf(r: OperatorReport): string {
       (r.bearInverse ? ' —— 空頭策略：手上放元大台灣50反1（00632R）' : ''),
   )
   L.push(
-    r.isEntryDay
-      ? `${r.asOfDate} 是上線進場日 → 下一交易日（${r.nextTradingDay}）照下列清單建倉。`
-      : r.isSignalDay
-        ? `${r.asOfDate} 是換股訊號日${
-            r.swapSignal ? '（動能換股觸發）' : ''
-          } → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
-        : `今天不是換股日；下次換股約 ${r.nextRebalanceDate}。在那之前抱著不動、只看停損。`,
+    !r.started
+      ? `策略要到 ${r.firstEntryDay} 才上線；在那之前不用動作。`
+      : r.isEntryDay
+        ? `${r.asOfDate} 是上線進場日 → 下一交易日（${r.nextTradingDay}）照下列清單建倉。`
+        : r.isSignalDay
+          ? `${r.asOfDate} 是換股訊號日${
+              r.swapSignal ? '（動能換股觸發）' : ''
+            } → 下一交易日（${r.nextTradingDay}）照下列動作換股。`
+          : `今天不是換股日；下次換股約 ${r.nextRebalanceDate}。在那之前抱著不動、只看停損。`,
   )
   L.push('')
   if (r.stopActionsNow.length) {
@@ -123,11 +140,13 @@ function textOf(r: OperatorReport): string {
     L.push('')
   }
   L.push(
-    r.isEntryDay
-      ? '上線進場清單：'
-      : r.isSignalDay
-        ? '本次換股動作：'
-        : `下次換股（約 ${r.nextRebalanceDate}）預覽：`,
+    !r.started
+      ? `上線當天（${r.firstEntryDay}）要買的清單：`
+      : r.isEntryDay
+        ? '上線進場清單：'
+        : r.isSignalDay
+          ? '本次換股動作：'
+          : `下次換股（約 ${r.nextRebalanceDate}）預覽：`,
   )
   for (const a of r.actions) {
     const verb = a.kind === 'sell' ? '賣出' : a.kind === 'buy' ? '買進' : '續抱'
@@ -156,7 +175,13 @@ function textOf(r: OperatorReport): string {
       L.push(`  ${h.code} ${h.name} · ${h.shares.toLocaleString()} 股 · 損益 ${pct(h.plPct)}${st}`)
     }
   }
+  const watch = swapWatchLine(r)
+  if (watch) {
+    L.push('')
+    L.push(`動能換股監看：${watch}`)
+  }
   L.push('')
+  L.push('※ 排程換股日優先於最短持有天數：換股日一到，就算某檔還沒滿最短持有也可能被換掉。')
   L.push('僅供研究，不構成投資建議。設定改動請到網站「操作計畫」頁重新產生 OPERATOR_PLAN。')
   return L.join('\n')
 }
@@ -171,6 +196,15 @@ function htmlOf(r: OperatorReport): string {
   )
   p.push(
     `<p style="color:#666;margin:0 0 4px">台股動力投資 — 操作提醒（依 <b>${r.asOfDate}</b> 收盤）</p>`,
+  )
+  // 一打開就看到結論
+  p.push(
+    `<div style="background:${r.verdict.act ? '#fff4f1' : '#eef7f0'};border:2px solid ${
+      r.verdict.act ? UP : '#8fbf9f'
+    };border-radius:6px;padding:14px 16px;margin:10px 0">` +
+      `<div style="font-size:19px;font-weight:700;line-height:1.5">${esc(r.verdict.headline)}</div>` +
+      `<div style="color:#555;font-size:13px;margin-top:6px">${esc(r.verdict.detail)}</div>` +
+      `</div>`,
   )
   p.push(`<p style="color:#666;font-size:12.5px;margin:0">策略：${esc(r.strategySummary)}</p>`)
 
@@ -203,13 +237,15 @@ function htmlOf(r: OperatorReport): string {
       : '') +
     (r.bearInverse ? '<br>空頭策略：手上放元大台灣50反1（00632R）' : '') +
     '<br>' +
-    (r.isEntryDay
-      ? `<b>${r.asOfDate} 是上線進場日</b> → 下一交易日（${r.nextTradingDay}）照「上線進場清單」建倉。`
-      : r.isSignalDay
-        ? `<b>${r.asOfDate} 是換股訊號日${
-            r.swapSignal ? '（動能換股觸發）' : ''
-          }</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
-        : `今天不是換股日；下次換股約 <b>${r.nextRebalanceDate}</b>。在那之前抱著不動、只看停損。`)
+    (!r.started
+      ? `策略要到 <b>${r.firstEntryDay}</b> 才上線；在那之前不用動作。`
+      : r.isEntryDay
+        ? `<b>${r.asOfDate} 是上線進場日</b> → 下一交易日（${r.nextTradingDay}）照「上線進場清單」建倉。`
+        : r.isSignalDay
+          ? `<b>${r.asOfDate} 是換股訊號日${
+              r.swapSignal ? '（動能換股觸發）' : ''
+            }</b> → 下一交易日（${r.nextTradingDay}）照「本次換股動作」操作。`
+          : `今天不是換股日；下次換股約 <b>${r.nextRebalanceDate}</b>。在那之前抱著不動、只看停損。`)
   p.push(box(r.regime === 'bear' ? '#fdecea' : '#eef7f0', regimeTxt))
 
   if (r.stopActionsNow.length) {
@@ -227,11 +263,13 @@ function htmlOf(r: OperatorReport): string {
 
   p.push(
     h3(
-      r.isEntryDay
-        ? '上線進場清單（明天執行）'
-        : r.isSignalDay
-          ? '本次換股動作（明天執行）'
-          : `下次換股（約 ${r.nextRebalanceDate}）預覽`,
+      !r.started
+        ? `上線當天（${r.firstEntryDay}）要買的清單`
+        : r.isEntryDay
+          ? '上線進場清單（明天執行）'
+          : r.isSignalDay
+            ? '本次換股動作（明天執行）'
+            : `下次換股（約 ${r.nextRebalanceDate}）預覽`,
     ),
   )
   p.push('<ul style="margin:0;padding-left:18px">')
@@ -282,8 +320,13 @@ function htmlOf(r: OperatorReport): string {
     )
   }
 
+  const watch = swapWatchLine(r)
+  if (watch) {
+    p.push(h3('動能換股監看'))
+    p.push(`<p style="margin:0">${esc(watch)}</p>`)
+  }
   p.push(
-    `<p style="color:#999;font-size:12px;margin-top:18px">僅供研究，不構成投資建議。設定改動請到網站「操作計畫」頁重新產生 <code>OPERATOR_PLAN</code>。</p>`,
+    `<p style="color:#999;font-size:12px;margin-top:18px">※ 排程換股日優先於最短持有天數：換股日一到，就算某檔還沒滿最短持有也可能被換掉。<br>僅供研究，不構成投資建議。設定改動請到網站「操作計畫」頁重新產生 <code>OPERATOR_PLAN</code>。</p>`,
   )
   p.push('</div>')
   return p.join('')
@@ -333,7 +376,7 @@ function main(): void {
   const history = loadHistory()
   const holidays = loadHolidays()
   const baselines = parseJsonl<BaselineRow>(join(DATA, 'baselines.jsonl'))
-  const report = buildOperatorReport(history, baselines, parsed.data, loadNames(), holidays)
+  const report = buildOperatorReport(history, baselines, parsed.data, loadNames(), { holidays })
   if (!report) {
     console.log('因子歷史不足 → 不產生提醒信。')
     return

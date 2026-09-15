@@ -62,3 +62,20 @@ export async function loadAllFactorHistory(): Promise<HistoryRow[]> {
   rows.sort((a, b) => a.date.localeCompare(b.date))
   return rows
 }
+
+/**
+ * 只載「最近 minRows 個交易日」的因子歷史 —— 從今年往回，湊夠列數就停。
+ * 給散佈圖 / 排行榜補算當日暫定動能用：mom121 需要 251 列，預設 300 綽綽有餘，
+ * 又不必像 `loadAllFactorHistory` 那樣把好幾年、十幾 MB 的 jsonl 全抓下來。
+ */
+export async function loadRecentFactorHistory(minRows = 300): Promise<HistoryRow[]> {
+  const thisYear = new Date().getFullYear()
+  const out: HistoryRow[] = []
+  for (let y = thisYear; y > thisYear - 8 && out.length < minRows; y--) {
+    const rows = await loadFactorHistory(y)
+    if (!rows.length && out.length) break // 往回遇到空缺就停
+    out.unshift(...rows)
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date))
+  return out
+}

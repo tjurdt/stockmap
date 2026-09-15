@@ -41,6 +41,21 @@ interface Quote {
   date: string | null
 }
 
+/** 某個時刻在台北時區的日期（YYYY-MM-DD）。 */
+function taipeiDate(d: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  )
+  return `${p.year}-${p.month}-${p.day}`
+}
+
 async function yahooQuote(code: string): Promise<Quote | null> {
   try {
     const res = await fetch(`${YAHOO}/${code}.TW?interval=1d&range=1d`, {
@@ -65,7 +80,8 @@ async function yahooQuote(code: string): Promise<Quote | null> {
       price: m.regularMarketPrice,
       prevClose: prev,
       time: t ? new Date(t * 1000).toISOString() : null,
-      date: null,
+      // 這筆報價屬於哪個台股交易日 —— 前端據此判斷「官方收盤檔是不是還沒跟上」
+      date: t ? taipeiDate(new Date(t * 1000)) : null,
     }
   } catch {
     return null
@@ -90,7 +106,7 @@ export default {
       .split(',')
       .map((c) => c.trim())
       .filter((c) => /^\d{4}$/.test(c))
-      .slice(0, 50)
+      .slice(0, 100)
     if (codes.length === 0) return json({ error: 'codes required' }, 400, cors)
 
     const quotes = (await Promise.all(codes.map(yahooQuote))).filter(

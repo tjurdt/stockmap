@@ -10,6 +10,10 @@ import type { BaselineRow } from '../../lib/baselines'
 import { isTradingDay, nextTradingDay, nthTradingDayOfMonth } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
 import { METRICS, type MetricKey } from '../../lib/metrics'
+import { momentumPct } from '../../lib/momentum'
+
+/** 動能數學的單一事實來源在 `lib/momentum.ts`；這裡轉出給既有呼叫端。 */
+export { momentumPct }
 
 export type Rebalance = 'W' | 'M'
 export type Weighting = 'equal' | 'mcap'
@@ -154,19 +158,6 @@ export const MOMENTUM_KEYS = new Set<MetricKey>(['m20', 'm60', 'm121'])
 
 export function isCustomMomentum(cfg: Pick<BacktestConfig, 'factor' | 'momDays'>): boolean {
   return MOMENTUM_KEYS.has(cfg.factor) && (cfg.momDays ?? 0) > 0
-}
-
-/**
- * 還原價序列（由舊到新）的區間報酬率 (%)。對齊 pipeline `factors.py::total_return`：
- * start = series[-(lookback+1)]、end = series[-(1+skip)]（跳過近期 → 動能窗少掉 skip 天，同 12-1 定義）。
- * 長度不足回 null。
- */
-export function momentumPct(series: number[], lookback: number, skip: number): number | null {
-  const need = lookback + 1
-  if (series.length < need || series.length < skip + 1) return null
-  const end = series[series.length - 1 - skip]!
-  const start = series[series.length - need]!
-  return start > 0 ? (end / start - 1) * 100 : null
 }
 
 /**

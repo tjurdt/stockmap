@@ -1,11 +1,18 @@
 /**
- * 操作報告 —— 純函式，訊號頁 / 操作計畫頁 / 每晚提醒信共用的單一事實來源。
+ * 操作報告 —— 純函式，操作計畫頁 / 每晚提醒信共用的單一事實來源。
  *
  * 輸入：因子歷史 + 大盤基準 + 一份操作計畫（策略 + 上線日 + 目前持股）。
- * 輸出：一份「今天收盤後、我該知道的一切」結構，交給各處各自渲染。
+ * 輸出：一份「到今天為止、我該知道的一切」結構，交給各處各自渲染。
+ *
+ * 規則優先序（與回測引擎 `engine.runBacktest` 完全一致，改這裡也要改那裡）：
+ *   1. 停損觸發 —— 不等換股日，照策略設定的時點出場。
+ *   2. 多空過濾 regimeExit='immediate' —— 轉空當天清空。
+ *   3. **排程換股日（每月第 N 個交易日 / 每週星期 N）優先於最短持有天數。**
+ *      排程日一到就照當日排名整批換，`swapMinHoldDays` 擋不住。
+ *   4. 非排程日的動能換股 —— 這時 `swapMinHoldDays` 才生效（防止一天到晚換來換去）。
  */
 import type { BaselineRow } from '../../lib/baselines'
-import { nextTradingDay } from '../../lib/calendar'
+import { addTradingDays, nextTradingDay, tradingDaysBetween } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
 import { METRICS } from '../../lib/metrics'
 import type { OperatorPlan } from '../../lib/plan'
@@ -58,6 +65,15 @@ export interface HoldingRow {
   factor: number | null
   /** 當前因子在選股池的排名（1 起；不在池中 = null） */
   factorRank: number | null
+  /** 買進後已經過幾個交易日 */
+  heldDays: number
+  /** 策略設定的最短持有交易日數（只擋非排程日的動能換股；0 = 沒設） */
+  minHoldDays: number
+  /** 滿足最短持有的那一天（已滿足則是過去的日期） */
+  minHoldUntil: string
+  minHoldMet: boolean
+  /** 依當前排名仍是目標持股（false = 排程換股日會被換掉） */
+  inTargets: boolean
 }
 
 export interface FactorBoardRow {
@@ -81,9 +97,58 @@ export interface ActionRow {
   price?: number | null
 }
 
+/** 動能換股的挑戰者：要贏最弱持股多少才換得動。 */
+export interface SwapChallenger {
+  code: string
+  name: string
+  factor: number
+  /** 已經比最弱持股好多少（因子單位；正 = 已領先） */
+  over: number
+  /** 距離換股門檻還差多少（<= 0 = 已達標） */
+  gap: number
+  qualified: boolean
+}
+
+/** 「什麼時候可以把手上哪一檔、換成動能超越多少的哪一檔」。 */
+export interface SwapWatch {
+  /** 策略有開動能換股 */
+  enabled: boolean
+  /** 門檻：挑戰者要比最弱持股好過這個比例（%） */
+  marginPct: number
+  minHoldDays: number
+  /** 會被換掉的那檔（已掉出目標名單的持股裡因子最差的） */
+  weakest: { code: string; name: string; factor: number } | null
+  /** 挑戰者要達到的因子值（null = 目前沒有可換的對象） */
+  thresholdFactor: number | null
+  /** 目前排名內、未持有的挑戰者（依離門檻近到遠） */
+  challengers: SwapChallenger[]
+  /** 所有掉出名單的持股都過了最短持有 */
+  minHoldReady: boolean
+  /** 最快能換股的日期（= 待換持股裡最晚的最短持有到期日的下一個交易日） */
+  earliestSwapDate: string | null
+  /** 今天就觸發（下一個交易日執行） */
+  triggered: boolean
+}
+
+export type VerdictKind =
+  'not-started' | 'entry' | 'stop' | 'bear-exit' | 'rebalance' | 'swap' | 'hold'
+
+/** 「明天到底要幹嘛」—— 網站大字與提醒信標題共用。 */
+export interface Verdict {
+  kind: VerdictKind
+  /** 要不要動手 */
+  act: boolean
+  /** 一句話結論 */
+  headline: string
+  /** 補充一兩句 */
+  detail: string
+}
+
 export interface OperatorReport {
-  /** 依據的收盤資料日 */
+  /** 依據的資料日（含盤中 / 盤後補的暫定當日列） */
   asOfDate: string
+  /** asOfDate 是尚未入庫的暫定當日資料時 = 該日期，否則 null */
+  provisionalDate: string | null
   /** 策略是否已上線（asOfDate >= plan.startDate） */
   started: boolean
   startDate: string
@@ -94,6 +159,8 @@ export interface OperatorReport {
   regimeChangedFrom: 'bull' | 'bear' | null
   /** asOfDate 是換股訊號日 → 下一交易日要照 actions 換股（排程日 / 動能換股 / 上線進場） */
   isSignalDay: boolean
+  /** asOfDate 是排程換股日（每月第 N 個交易日 / 每週星期 N） */
+  isRebalanceDay: boolean
   /** 非排程日、但動能換股規則觸發了 */
   swapSignal: boolean
   /** 已上線、但還沒進場（asOfDate 就是上線進場日） */
@@ -105,6 +172,8 @@ export interface OperatorReport {
   /** asOfDate 之後的下一個台股交易日 */
   nextTradingDay: string
   nextRebalanceDate: string
+  /** 從今天到下次排程換股日還有幾個交易日 */
+  tradingDaysToRebalance: number
   /** 目前空頭且策略設定「空頭買台灣50反1」 */
   bearInverse: boolean
   targets: TargetRow[]
@@ -113,9 +182,24 @@ export interface OperatorReport {
   actions: ActionRow[]
   /** 不必等換股日、今天就該出場的停損 */
   stopActionsNow: { code: string; name: string; dropPct: number }[]
+  swapWatch: SwapWatch
+  verdict: Verdict
+  /** 目前持股總市值（有現價的部分） */
+  totalValue: number | null
+}
+
+export interface ReportOptions {
+  /** 台股休市日（data/calendar.json）；沒給就只跳週末 */
+  holidays?: Set<string>
+  /** 可選的即時 / 最新報價來源；回 null 時退回當日收盤 */
+  priceOf?: (code: string) => number | null
+  /** 最後一列是「尚未入庫的暫定當日資料」時傳它的日期（純標示用） */
+  provisionalDate?: string | null
 }
 
 const cfgOf = (plan: OperatorPlan): BacktestConfig => ({ ...plan.strategy, costBps: 0 })
+
+const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 
 function strategySummary(plan: OperatorPlan, factorLabel: string): string {
   const s = plan.strategy
@@ -155,18 +239,27 @@ function strategySummary(plan: OperatorPlan, factorLabel: string): string {
   return parts.join(' · ')
 }
 
-/**
- * @param names   code → 股名
- * @param priceOf 可選的即時價來源（盤中用）；回 null 時退回當日收盤
- */
+/** 一句話描述買賣清單，例如「賣出 2317 鴻海，買進 2454 聯發科」。 */
+function actionPhrase(actions: ActionRow[]): string {
+  const one = (a: ActionRow) => `${a.code} ${a.name}`.trim()
+  const sell = actions.filter((a) => a.kind === 'sell')
+  const buy = actions.filter((a) => a.kind === 'buy')
+  const parts: string[] = []
+  if (sell.length) parts.push(`賣出 ${sell.map(one).join('、')}`)
+  if (buy.length) parts.push(`買進 ${buy.map(one).join('、')}`)
+  return parts.join('，')
+}
+
 export function buildOperatorReport(
   history: HistoryRow[],
   baselines: BaselineRow[],
   plan: OperatorPlan,
   names: Map<string, string>,
-  holidays: Set<string> = new Set(),
-  priceOf: (code: string) => number | null = () => null,
+  opts: ReportOptions = {},
 ): OperatorReport | null {
+  const holidays = opts.holidays ?? new Set<string>()
+  const priceOf = opts.priceOf ?? (() => null)
+
   const rows = [...history].sort((a, b) => a.date.localeCompare(b.date))
   const lastRow = rows.at(-1)
   if (!lastRow) return null
@@ -222,17 +315,18 @@ export function buildOperatorReport(
     price: px(t.code),
   }))
 
-  // 動能換股：非排程日也可能因為挑戰者反超而觸發換股
   const factorOf = (code: string): number | null => {
     const s = fLast.stocks.find((x) => x.code === code)
     if (!s) return null
     const v = (s as Record<string, unknown>)[METRICS[cfg.factor].field]
     return typeof v === 'number' && Number.isFinite(v) ? v : null
   }
-  const heldDays = (code: string): number => {
+  const heldDaysOf = (code: string): number => {
     const h = plan.holdings.find((x) => x.code === code)
     return h ? rows.filter((r) => r.date > h.entryDate && r.date <= lastRow.date).length : 0
   }
+
+  // 動能換股：非排程日也可能因為挑戰者反超而觸發換股
   const swapSignal =
     regime !== 'bear' &&
     !isRebalDay &&
@@ -242,7 +336,7 @@ export function buildOperatorReport(
       rawTargets.map((t) => t.code),
       plan.holdings.map((h) => h.code),
       factorOf,
-      heldDays,
+      heldDaysOf,
     )
 
   // 上線進場：已過上線日、但還沒建倉 → 今天就是進場日（在建倉前每天都提示）
@@ -319,8 +413,12 @@ export function buildOperatorReport(
     return { type, refPrice, stopPrice, peakPrice, pct, hit, room }
   }
 
+  const targetCodes = new Set(targets.map((t) => t.code))
+  const minHoldDays = Math.max(0, Math.round(plan.strategy.swapMinHoldDays ?? 0))
+
   const holdings: HoldingRow[] = plan.holdings.map((h) => {
     const price = px(h.code)
+    const heldDays = heldDaysOf(h.code)
     return {
       code: h.code,
       name: name(h.code),
@@ -333,10 +431,14 @@ export function buildOperatorReport(
       stop: stopOf(h.code, h.entryPrice, h.entryDate),
       factor: factorByCode.get(h.code) ?? factorOf(h.code),
       factorRank: rankOf.get(h.code) ?? null,
+      heldDays,
+      minHoldDays,
+      minHoldUntil: addTradingDays(h.entryDate, minHoldDays, holidays),
+      minHoldMet: heldDays >= minHoldDays,
+      inTargets: targetCodes.has(h.code),
     }
   })
 
-  const targetCodes = new Set(targets.map((t) => t.code))
   const heldCodes = new Set(plan.holdings.map((h) => h.code))
   const actions: ActionRow[] = [
     ...holdings
@@ -368,9 +470,127 @@ export function buildOperatorReport(
     .map((h) => ({ code: h.code, name: h.name, dropPct: h.stop!.pct }))
 
   const bearInverse = regime === 'bear' && plan.strategy.bearHolding === 'inverse'
+  const next = nextTradingDay(lastRow.date, holidays)
+  const nextRebal = nextRebalanceDate(lastRow.date, cfg.rebalance, cfg.rebalanceDay ?? 1, holidays)
+
+  // ── 動能換股監看：誰會被換掉、挑戰者要贏多少、最快哪天換得動 ──────────────
+  const dir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
+  const margin = Math.max(0, (plan.strategy.swapMargin ?? 0) / 100)
+  const outgoing = holdings.filter(
+    (h): h is HoldingRow & { factor: number } => !h.inTargets && h.factor != null,
+  )
+  const worst = outgoing.length
+    ? outgoing.reduce((a, b) => (dir * (a.factor - b.factor) < 0 ? a : b))
+    : null
+  // shouldSwap 的門檻：dir*(挑戰者 − 最弱持股) >= |最弱持股| × margin
+  const thresholdFactor = worst
+    ? worst.factor + dir * Math.max(1e-12, Math.abs(worst.factor) * margin)
+    : null
+  const challengers: SwapChallenger[] =
+    worst && thresholdFactor != null
+      ? targets
+          .filter((t) => !heldCodes.has(t.code))
+          .map((t) => ({
+            code: t.code,
+            name: t.name,
+            factor: t.factor,
+            over: dir * (t.factor - worst.factor),
+            gap: dir * (thresholdFactor - t.factor),
+            qualified: dir * (t.factor - thresholdFactor) >= 0,
+          }))
+          .sort((a, b) => a.gap - b.gap)
+      : []
+  const minHoldReady = outgoing.every((h) => h.minHoldMet)
+  const swapWatch: SwapWatch = {
+    enabled: plan.strategy.swapOnBetter === true,
+    marginPct: plan.strategy.swapMargin ?? 0,
+    minHoldDays,
+    weakest: worst ? { code: worst.code, name: worst.name, factor: worst.factor } : null,
+    thresholdFactor,
+    challengers,
+    minHoldReady,
+    earliestSwapDate: outgoing.length
+      ? minHoldReady
+        ? next
+        : nextTradingDay(
+            outgoing.map((h) => h.minHoldUntil).reduce((a, b) => (a > b ? a : b)),
+            holidays,
+          )
+      : null,
+    triggered: swapSignal,
+  }
+
+  // ── 明天到底要幹嘛 ────────────────────────────────────────────────────
+  const phrase = actionPhrase(actions)
+  const toRebal = tradingDaysBetween(lastRow.date, nextRebal, holidays)
+  let verdict: Verdict
+  if (!started) {
+    verdict = {
+      kind: 'not-started',
+      act: false,
+      headline: `還沒開始 —— ${mmdd(firstEntryDay)} 上線那天才進場`,
+      detail: `上線日設定在 ${plan.startDate}；在那之前不用做任何事。`,
+    }
+  } else if (stopActionsNow.length > 0) {
+    verdict = {
+      kind: 'stop',
+      act: true,
+      headline: `${mmdd(next)} 要停損賣出：${stopActionsNow
+        .map((s) => `${s.code} ${s.name}`.trim())
+        .join('、')}`,
+      detail: '停損不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
+    }
+  } else if (regime === 'bear' && plan.strategy.regimeExit === 'immediate' && holdings.length > 0) {
+    verdict = {
+      kind: 'bear-exit',
+      act: true,
+      headline: `${mmdd(next)} 清空持股（大盤轉空頭）`,
+      detail: bearInverse
+        ? '依策略：把持股換成元大台灣50反1（00632R），等轉多頭再換回來。'
+        : `依策略：全部賣掉抱現金，等換股日（${nextRebal}）且大盤轉多再進場。`,
+    }
+  } else if (isEntryDay) {
+    verdict = {
+      kind: 'entry',
+      act: true,
+      headline: `${mmdd(next)} 進場：${phrase || '照目標清單建倉'}`,
+      detail: `這是上線後第一次建倉；之後每逢換股日（下次 ${nextRebal}）再依排名調整。`,
+    }
+  } else if (isRebalDay || swapSignal) {
+    const kind: VerdictKind = isRebalDay ? 'rebalance' : 'swap'
+    const why = isRebalDay ? '今天是排程換股日' : '今天動能換股條件成立'
+    verdict = phrase
+      ? {
+          kind,
+          act: true,
+          headline: `${mmdd(next)} 要換股：${phrase}`,
+          detail: `${why}（依 ${lastRow.date} 的排名）。收盤前後下單，盡量以收盤價成交。`,
+        }
+      : {
+          kind,
+          act: false,
+          headline: `${mmdd(next)} 不用動作`,
+          detail: `${why}，但重新排名後名單沒變 —— 手上這幾檔續抱就好。`,
+        }
+  } else {
+    verdict = {
+      kind: 'hold',
+      act: false,
+      headline: `${mmdd(next)} 不用動作`,
+      detail:
+        holdings.length === 0
+          ? `目前空手。下一個換股日 ${nextRebal}（還有 ${toRebal} 個交易日）再依排名進場。`
+          : `抱著不動。下一個換股日 ${nextRebal}（還有 ${toRebal} 個交易日）；在那之前只有停損${
+              swapWatch.enabled ? '或動能換股條件成立' : ''
+            }才會提前出手。`,
+    }
+  }
+
+  const valued = holdings.map((h) => h.value).filter((v): v is number => v != null)
 
   return {
     asOfDate: lastRow.date,
+    provisionalDate: opts.provisionalDate ?? null,
     started,
     startDate: plan.startDate,
     factorLabel,
@@ -378,21 +598,21 @@ export function buildOperatorReport(
     regime,
     regimeChangedFrom,
     isSignalDay,
+    isRebalanceDay: isRebalDay,
     swapSignal,
     isEntryDay,
     firstEntryDay,
     factorBoard,
-    nextTradingDay: nextTradingDay(lastRow.date, holidays),
-    nextRebalanceDate: nextRebalanceDate(
-      lastRow.date,
-      cfg.rebalance,
-      cfg.rebalanceDay ?? 1,
-      holidays,
-    ),
+    nextTradingDay: next,
+    nextRebalanceDate: nextRebal,
+    tradingDaysToRebalance: toRebal,
     bearInverse,
     targets,
     holdings,
     actions,
     stopActionsNow,
+    swapWatch,
+    verdict,
+    totalValue: valued.length ? valued.reduce((a, b) => a + b, 0) : null,
   }
 }

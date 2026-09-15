@@ -53,21 +53,29 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 
 ## 不變式（改動前先讀）
 
-1. **`data/latest.json` 是前端唯一資料契約。** 前端不在瀏覽器直連證交所（`worker/` 例外，且只給盤中
-   延遲報價）。欄位只能往後相容地加；破壞性變更要 bump `schemaVersion`。
+1. **`data/latest.json` 是前端唯一資料契約。** 前端不在瀏覽器直連證交所（`worker/` 例外：只回延遲
+   報價）。欄位只能往後相容地加；破壞性變更要 bump `schemaVersion`。
+   **官方資料盤後才入庫，所以前端一律用 `hooks/useLiveMarket` 取資料** —— 它在因子歷史尾端補一列
+   「暫定當日列」（`lib/liveRow.ts`，價 / 市值 / 估值等比例推算、動能依補完的還原價序列重算），
+   資料入庫後自動消失。凡是顯示日期的地方都要標示 provisional。
 2. **成分股名單只在 `schema/universe.json`（顯示）與 `schema/backtest_universe.json`（回測池），
    分別由 `universe_rank` / `universe_history` 產生 —— 勿手改。**
    前端從 snapshot 讀，不讀這個檔。
-3. **因子數學只在 `pipeline/src/twse_pipeline/factors.py`，而且要有測試。** 前端只視覺化算好的值。
-   即時模式（`web/src/lib/overlay.ts`）只覆寫價/漲跌/市值，動能維持收盤。
+3. **因子數學只在 `pipeline/src/twse_pipeline/factors.py`，而且要有測試。** 前端重算動能的只有一處
+   （`web/src/lib/momentum.ts`，供自訂動能窗與暫定當日列用），窗格由
+   `pipeline/tests/test_factor_alignment.py` 釘住不准 drift。
    回測 / 訊號邏輯在 `web/src/features/backtest/engine.ts`（純函式、有測試）；換股時點用真實交易日曆
    （`web/src/lib/calendar.ts` ← `data/calendar.json`），「每月第 N 個交易日」。
+   **規則優先序（引擎與 `report.ts` 必須一致）**：停損 → 轉空清空 → **排程換股日** → 動能換股。
+   `swapMinHoldDays`（最短持有）只擋最後一項；排程換股日一到照樣整批換。
 4. **因子 key 三處對齊**：`factors.py` 的 `FACTORS`、`schema/snapshot.schema.json`、
    `web/src/lib/metrics.ts` 的 `METRICS`。
 5. **前端 zod schema 與 JSON Schema 對齊**：`web/src/lib/data.contract.test.ts`（snapshot）與
    `web/src/lib/plan.contract.test.ts`（operator plan）會在 drift 時失敗。
    操作計畫契約：`schema/operator_plan.schema.json` ↔ `web/src/lib/plan.ts`。
 6. 每個 lib 純函式（`web/src/lib/`、`twse_pipeline/util.py`、`factors.py`）都應有對應測試。
+7. **「明天要幹嘛」只有一份事實來源**：`web/src/features/signal/report.ts::buildOperatorReport`
+   （含 `verdict` / `swapWatch`）。網站 `/plan` 與每晚提醒信都只渲染它，不自己重算規則。
 
 ## 擴充
 

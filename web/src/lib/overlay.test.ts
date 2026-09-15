@@ -47,3 +47,38 @@ describe('applyLive', () => {
     expect(s.chgPct).toBe(1)
   })
 })
+
+describe('applyLive + momentumFrom', () => {
+  const row = {
+    schemaVersion: 1 as const,
+    date: '2026-09-10',
+    stocks: [
+      {
+        code: '2330',
+        close: 1100,
+        adjClose: 1100,
+        mcap: 27500,
+        pe: 22,
+        pb: 5.5,
+        dy: 1.8,
+        mom20: 13,
+        mom60: 14,
+        mom121: 15,
+      },
+    ],
+  }
+
+  it('動能 / 估值改用暫定當日列的值', () => {
+    const s = applyLive([base], new Map([['2330', q({})]]), row)[0]!
+    expect(s.close).toBe(1100)
+    expect(s.mom121).toBe(15)
+    expect(s.pe).toBe(22)
+    expect(s.dy).toBe(1.8)
+  })
+
+  it('沒報價但有暫定列 → 仍更新動能', () => {
+    const s = applyLive([base], new Map(), row)[0]!
+    expect(s.mom20).toBe(13)
+    expect(s.close).toBe(1000)
+  })
+})

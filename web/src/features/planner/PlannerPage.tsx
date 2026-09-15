@@ -1,41 +1,51 @@
-import { useMemo, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+/**
+ * 操作計畫 —— 「明天要幹嘛」的單一入口（舊的 /signal 已併進來）。
+ *
+ * 所有訊號都來自 `features/signal/report.ts::buildOperatorReport`，與每晚提醒信同一份邏輯；
+ * 這頁不自己算任何規則，只負責把結論講成人話。
+ *
+ * 資料新鮮度：因子歷史（官方收盤）之外，再用最新報價補一列暫定的當日資料
+ * （`hooks/useLiveMarket`），所以盤中與盤後都不會停在昨天。
+ */
+import { useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import { Layout } from '../../components/Layout'
 import { useAsync } from '../../hooks/useAsync'
+import { useLiveMarket } from '../../hooks/useLiveMarket'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { loadBaselines } from '../../lib/baselines'
-import { loadCalendar, tradingDayOrdinal } from '../../lib/calendar'
+import { loadCalendar } from '../../lib/calendar'
 import { loadAllFactorHistory } from '../../lib/history'
-import { toPlanJson, useOperatorPlan } from '../../lib/plan'
-import { decodeParams, encodeParams } from '../backtest/strategyParams'
-import { HoldingsEditor } from '../signal/HoldingsEditor'
+import { freshnessLabel } from '../../lib/liveRow'
+import { METRICS } from '../../lib/metrics'
+import { holdingsOf, toPlanJson, useOperatorPlan } from '../../lib/plan'
+import { decodeParams } from '../backtest/strategyParams'
 import { buildOperatorReport } from '../signal/report'
 import { ReportView } from '../signal/ReportView'
+import { HoldingsPanel } from './HoldingsPanel'
+import { PlanSettings } from './PlanSettings'
 import styles from './planner.module.css'
+import { SwapWatchPanel } from './SwapWatchPanel'
+import { TomorrowCard } from './TomorrowCard'
+import { TradeLog } from './TradeLog'
 
-const WEEKDAYS = [
-  ['1', '週一'],
-  ['2', '週二'],
-  ['3', '週三'],
-  ['4', '週四'],
-  ['5', '週五'],
-] as const
+const price = (v: number | null | undefined) =>
+  v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
 export function PlannerPage() {
   const search = useLocation().search
   // 有 query（從回測頁帶設定過來）才傳 seed —— 直接開 /plan 就別動既有計畫
   const seed = useMemo(() => (search ? decodeParams(search) : undefined), [search])
   const [plan, setPlan] = useOperatorPlan(seed)
-  const s = plan.strategy
 
   const hist = useAsync(loadAllFactorHistory, [])
   const bl = useAsync(loadBaselines, [])
   const cal = useAsync(loadCalendar, [])
   const snap = useSnapshot()
-  const [copied, setCopied] = useState(false)
 
   const holidays = cal.status === 'ready' && cal.data ? cal.data.holidays : new Set<string>()
+  const rows = hist.status === 'ready' ? hist.data : []
 
   const names = useMemo(() => {
     const m = new Map<string, string>()
@@ -43,162 +53,134 @@ export function PlannerPage() {
     return m
   }, [snap])
 
-  const patchStrategy = (p: Partial<typeof s>) => setPlan({ ...plan, strategy: { ...s, ...p } })
+  // 手上持有但可能已掉出選股池的股票也要報價
+  const holdingCodes = useMemo(() => holdingsOf(plan.trades).map((h) => h.code), [plan.trades])
+  const market = useLiveMarket(rows, holdingCodes)
 
-  const planJson = useMemo(() => JSON.stringify(toPlanJson(plan), null, 2), [plan])
-
+  // 報告偏重（要掃過整段歷史）→ 只在真正會改變結果的東西變了才重算
+  const { rows: liveRows, priceOf, provisionalDate } = market
   const report = useMemo(() => {
     if (hist.status !== 'ready' || bl.status !== 'ready') return null
-    return buildOperatorReport(hist.data, bl.data, toPlanJson(plan), names, holidays)
-  }, [hist, bl, plan, names, holidays])
+    return buildOperatorReport(liveRows, bl.data, toPlanJson(plan), names, {
+      holidays,
+      priceOf,
+      provisionalDate,
+    })
+  }, [hist.status, bl, plan, names, holidays, liveRows, priceOf, provisionalDate])
 
-  const copy = () => {
-    navigator.clipboard.writeText(planJson).then(
-      () => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2500)
-      },
-      () => setCopied(false),
+  const asOf = hist.status === 'ready' ? freshnessLabel(market, market.phase) : '載入中…'
+
+  if (hist.status === 'loading') return <Layout asOf={asOf}>載入中…</Layout>
+  if (hist.status === 'error' || !report) {
+    return (
+      <Layout asOf={asOf}>
+        <p>
+          讀不到因子歷史（<code>data/history/</code>）。請確認 <code>fetch-twse</code> workflow
+          至少成功跑過一次。
+        </p>
+      </Layout>
     )
   }
 
-  const strategyQuery = encodeParams(s)
+  const factor = plan.strategy.factor
 
   return (
-    <Layout asOf="操作計畫存在這台裝置；每晚提醒信讀 GitHub secret">
-      <div className={styles.grid}>
-        <div className={styles.panel}>
-          <h3>設定</h3>
+    <Layout asOf={asOf}>
+      <div className={styles.page}>
+        {market.provisionalDate && (
+          <p className={styles.note} style={{ margin: 0 }}>
+            ※ 官方收盤檔還停在 <b>{market.officialDate}</b>；下面所有數字已用{' '}
+            <b>{market.provisionalDate}</b> 的最新報價
+            {market.phase === 'open' ? '（盤中，約 15 分鐘延遲）' : '（收盤價）'}
+            補算成暫定值（{market.quoted} 檔有報價）。等盤後資料入庫會自動換回官方數字。
+          </p>
+        )}
+        {!market.provisionalDate && market.failed && (
+          <p className={styles.stale}>
+            抓不到最新報價，畫面停在官方收盤資料 <b>{market.officialDate}</b>。
+            若今天已收盤，代表報價 proxy 沒回應（見 <code>worker/</code>）。
+          </p>
+        )}
 
-          {report && (
-            <p className={styles.nextDay}>
-              下一個台股交易日：<b>{report.nextTradingDay}</b>
-            </p>
-          )}
+        <TomorrowCard report={report} />
 
-          <div className={`${styles.group} ${styles.gTiming}`}>
-            <label className={styles.field}>策略上線日</label>
-            <input
-              type="date"
-              value={plan.startDate}
-              onChange={(e) => setPlan({ ...plan, startDate: e.target.value })}
-            />
-            <p className={styles.hint}>
-              上線日進場買下方目標清單；之後每逢換股日再依規則調整。例如：上線日設本月 7
-              號、換股日設 「每月第一個交易日」，就是 7 號建倉、之後每月月初決定要不要換股。
-            </p>
+        <HoldingsPanel report={report} factor={factor} />
 
-            <label className={styles.field}>換股頻率</label>
-            <div className={styles.radios}>
-              {(['W', 'M'] as const).map((v) => (
-                <button
-                  key={v}
-                  data-on={s.rebalance === v}
-                  onClick={() => patchStrategy({ rebalance: v })}
-                >
-                  {v === 'W' ? '每週' : '每月'}
-                </button>
-              ))}
-            </div>
+        <SwapWatchPanel report={report} factor={factor} />
 
-            {s.rebalance === 'M' ? (
-              <>
-                <label className={styles.field}>每月第 {s.rebalanceDay} 個交易日換股</label>
-                <div className={styles.radios}>
-                  <button
-                    data-on={s.rebalanceDay === 1}
-                    onClick={() => patchStrategy({ rebalanceDay: 1 })}
-                  >
-                    每月第一個交易日
-                  </button>
-                  <button
-                    data-on={s.rebalanceDay === tradingDayOrdinal(plan.startDate, holidays)}
-                    onClick={() =>
-                      patchStrategy({ rebalanceDay: tradingDayOrdinal(plan.startDate, holidays) })
-                    }
-                  >
-                    跟上線日同順位（第 {tradingDayOrdinal(plan.startDate, holidays)}）
-                  </button>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={23}
-                  value={s.rebalanceDay}
-                  onChange={(e) => patchStrategy({ rebalanceDay: Number(e.target.value) })}
-                />
-              </>
-            ) : (
-              <>
-                <label className={styles.field}>每週星期幾換股</label>
-                <div className={styles.radios}>
-                  {WEEKDAYS.map(([v, label]) => (
-                    <button
-                      key={v}
-                      data-on={String(s.rebalanceDay) === v}
-                      onClick={() => patchStrategy({ rebalanceDay: Number(v) })}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className={`${styles.group} ${styles.gStrategy}`}>
-            <label className={styles.field}>策略參數</label>
-            <p className={styles.strategyLine}>{report?.strategySummary ?? '載入中…'}</p>
-            {search && (
-              <p className={styles.hint}>✓ 已用回測頁帶來的設定更新策略（持股 / 上線日保留）。</p>
-            )}
-            <Link to={`/backtest?${strategyQuery}`} className={styles.link}>
-              → 回回測頁調整因子 / 檔數 / 停損 / 動能換股 / 多空過濾
-            </Link>
-
-            <label className={styles.field}>目前持股</label>
-            <HoldingsEditor
-              value={plan.holdings}
-              names={names}
-              onChange={(holdings) => setPlan({ ...plan, holdings })}
-            />
-          </div>
-
-          <hr className={styles.hr} />
-          <button className={styles.copyBtn} onClick={copy}>
-            {copied ? '✓ 已複製' : '複製設定 JSON'}
-          </button>
-          <ol className={styles.steps}>
-            <li>
-              到 GitHub → 這個 repo → <b>Settings</b> → <b>Secrets and variables</b> →{' '}
-              <b>Actions</b>
-            </li>
-            <li>
-              新增 / 更新 secret <code>OPERATOR_PLAN</code>，內容貼上剛剛複製的 JSON
-            </li>
-            <li>
-              另外設好 <code>MAIL_USERNAME</code>（Gmail）、<code>MAIL_PASSWORD</code>
-              （應用程式密碼）、
-              <code>MAIL_TO</code>（收件人）
-            </li>
-            <li>每個交易日 19:00（台北）會寄出下方這份報告</li>
-          </ol>
-          <details className={styles.raw}>
-            <summary>看 JSON</summary>
-            <pre>{planJson}</pre>
-          </details>
-        </div>
-
-        <div className={styles.preview}>
-          <h3>提醒信預覽（依最新收盤資料）</h3>
-          {hist.status === 'loading' && <p>載入因子歷史中…</p>}
-          {hist.status === 'error' && <p>讀不到因子歷史。</p>}
-          {report ? (
-            <ReportView report={report} factor={s.factor} />
+        <div className={styles.card}>
+          <h3>
+            目標名單{' '}
+            <span className={styles.sub}>
+              依 {report.factorLabel} 排名（{report.asOfDate}
+              {report.provisionalDate ? '，暫定' : ' 收盤'}）
+            </span>
+          </h3>
+          {report.targets.length === 0 ? (
+            <p className={styles.note}>（空頭，這輪不持股）</p>
           ) : (
-            hist.status === 'ready' && <p>因子歷史不足，無法產生報告。</p>
+            <div className={styles.scroll}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>代號 / 名稱</th>
+                    <th>{report.factorLabel}</th>
+                    <th>現價</th>
+                    <th>目標比重</th>
+                    <th>我有嗎</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.targets.map((t, i) => {
+                    const held = report.holdings.some((h) => h.code === t.code)
+                    return (
+                      <tr key={t.code}>
+                        <td>{i + 1}</td>
+                        <td>
+                          {t.code} {t.name}
+                        </td>
+                        <td>{METRICS[factor].fmt(t.factor)}</td>
+                        <td>{price(t.price)}</td>
+                        <td>{(t.weight * 100).toFixed(0)}%</td>
+                        <td className={held ? styles.ok : styles.warn}>
+                          {held ? '已持有' : '要買進'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
+          <p className={styles.note}>
+            這是「假如現在就換股」的名單。真正要照著做的時機，以上面的結論為準 ——
+            非換股日看到名單有差異是正常的。
+          </p>
         </div>
+
+        <TradeLog
+          trades={plan.trades}
+          onChange={(trades) => setPlan({ ...plan, trades })}
+          names={names}
+          priceOf={market.priceOf}
+          defaultDate={report.asOfDate}
+        />
+
+        <PlanSettings
+          plan={plan}
+          setPlan={setPlan}
+          holidays={holidays}
+          strategySummary={report.strategySummary}
+          seeded={Boolean(search)}
+        />
+
+        <details className={styles.fold}>
+          <summary>📧 每晚提醒信預覽（含動能排行 vs 我的持股）</summary>
+          <div className={styles.foldBody}>
+            <ReportView report={report} factor={factor} />
+          </div>
+        </details>
       </div>
     </Layout>
   )
