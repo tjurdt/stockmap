@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
+import { InfoHint } from '../../components/InfoHint'
 import { Layout } from '../../components/Layout'
 import { CycleField } from '../../components/controls/CycleField'
 import { Section } from '../../components/controls/Section'
@@ -584,7 +585,11 @@ export function BacktestPage() {
           format={(v) => `賣出 ${v} bp`}
         />
         <p className={styles.sub} style={{ margin: '6px 2px 0' }}>
-          國泰證券 2.8 折 ≈ 手續費 4 bp／邊；個股賣出另課證交稅 30 bp（ETF 10）。
+          交易損耗怎麼設
+          <InfoHint label="交易損耗怎麼設">
+            手續費 0.1425%／邊，券商折扣後才是實付 —— 例如 2.8 折 ≈ 4 bp／邊。 賣出另課證交稅：個股
+            30 bp、ETF 10 bp。1 bp = 0.01%。
+          </InfoHint>
         </p>
       </Section>
     </>

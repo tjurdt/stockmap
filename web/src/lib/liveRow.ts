@@ -11,6 +11,8 @@
  *  - 價格 / 還原價 / 市值 / PE / PB / 殖利率都用「現價 ÷ 前一列收盤」等比例推算
  *    （股數、EPS、每股淨值、配息當日不變 → 這幾個比例關係是精確的）。
  *  - 動能欄位依補完的還原價序列重算，公式與 pipeline `factors.py` 同一份（`lib/momentum.ts`）。
+ *    序列不夠長而算不出來時**保留前一列的值**（新進榜個股在 jsonl 只有進榜後那幾列，
+ *    但管線是用 prices.json 的 400 個交易日算的 —— 不能把它洗成 null，那會讓它掉出排名）。
  *  - 沒有報價的個股原值往後帶（等同當日 0%），不從選股池消失。
  *
  * 限制：這是「暫定」資料 —— 除權息當日的還原價會有一天的誤差；若 `data/` 落後好幾個交易日，
@@ -72,6 +74,7 @@ export function withProvisionalRow(
     const adjClose = scale(s.adjClose, k)
     const withToday = adjClose != null && adjClose > 0 ? [...arr, adjClose] : arr
 
+    const mom = momentumFields(withToday)
     return {
       ...s,
       close: usable ? q!.price! : s.close,
@@ -81,7 +84,9 @@ export function withProvisionalRow(
       pb: scale(s.pb, k),
       // 殖利率 = 每股配息 ÷ 股價 → 與股價成反比
       dy: scale(s.dy, 1 / k),
-      ...momentumFields(withToday),
+      mom20: mom.mom20 ?? s.mom20,
+      mom60: mom.mom60 ?? s.mom60,
+      mom121: mom.mom121 ?? s.mom121,
     }
   })
 

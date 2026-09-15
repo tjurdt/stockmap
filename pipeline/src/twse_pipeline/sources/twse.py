@@ -12,6 +12,9 @@
 from __future__ import annotations
 
 import json
+import sys
+import time
+import urllib.error
 import urllib.request
 
 BASE = "https://openapi.twse.com.tw/v1"
@@ -26,10 +29,31 @@ _UA = "Mozilla/5.0 (stockmap-pipeline +https://github.com/tjurdt/stockmap)"
 Row = dict[str, str]
 
 
+# 暫時性錯誤重試：證交所偶爾回 5xx / 連線逾時，等一下再試多半就好了。
+# 排程本身每 30 分鐘還會再跑一次，這裡只是讓「一次小抽風」不用等半小時。
+_RETRIES = 3
+_BACKOFF_S = (2, 8)
+_RETRY_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
 def _get_json(url: str, *, timeout: int = 45) -> object:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (固定 https 端點)
-        return json.loads(r.read().decode("utf-8"))
+    for attempt in range(_RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (固定 https 端點)
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code not in _RETRY_CODES or attempt == _RETRIES - 1:
+                raise
+            reason = f"HTTP {e.code}"
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+            if attempt == _RETRIES - 1:
+                raise
+            reason = type(e).__name__
+        wait = _BACKOFF_S[min(attempt, len(_BACKOFF_S) - 1)]
+        print(f"  warn: {url.rsplit('/', 1)[-1]} {reason}，{wait}s 後重試", file=sys.stderr)
+        time.sleep(wait)
+    raise RuntimeError("unreachable")  # pragma: no cover
 
 
 def _get(url: str, *, timeout: int = 45) -> list[Row]:

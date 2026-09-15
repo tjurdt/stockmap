@@ -69,7 +69,9 @@ describe('withProvisionalRow', () => {
     )
     const a = r.rows.at(-1)!.stocks.find((s) => s.code === '2330')!
     expect(a.mom20).toBeCloseTo(10, 6) // 110/100 - 1
-    expect(a.mom60).toBeNull() // 序列不夠長
+    // 序列不夠長 → 保留管線算好的舊值（新進榜股在 jsonl 列數少，但管線用的是 400 日序列）
+    expect(a.mom60).toBe(2)
+    expect(a.mom121).toBe(3)
   })
 
   it('報價日期不晚於歷史最後一列 → 原樣回傳', () => {

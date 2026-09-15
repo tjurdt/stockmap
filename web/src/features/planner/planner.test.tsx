@@ -126,8 +126,9 @@ describe('SwapWatchPanel', () => {
     render(<SwapWatchPanel report={r} factor="m20" />)
     expect(screen.getByText('3333 丙公司')).toBeInTheDocument()
     expect(screen.getAllByText(r.swapWatch.earliestSwapDate!).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/還有 \d+ 個交易日/).length).toBeGreaterThan(0)
     // 規則優先序一定要寫在畫面上
-    expect(screen.getByText(/定期換股日 > 最短持有天數/)).toBeInTheDocument()
+    expect(screen.getByText(/定期換股日 ＞ 最短持有天數/)).toBeInTheDocument()
   })
 
   it('沒開動能換股時只講定期換股日', () => {

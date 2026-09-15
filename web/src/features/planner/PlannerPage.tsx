@@ -10,6 +10,7 @@
 import { useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 
+import { InfoHint } from '../../components/InfoHint'
 import { Layout } from '../../components/Layout'
 import { useAsync } from '../../hooks/useAsync'
 import { useLiveMarket } from '../../hooks/useLiveMarket'
@@ -88,11 +89,16 @@ export function PlannerPage() {
     <Layout asOf={asOf}>
       <div className={styles.page}>
         {market.provisionalDate && (
-          <p className={styles.note} style={{ margin: 0 }}>
-            ※ 官方收盤檔還停在 <b>{market.officialDate}</b>；下面所有數字已用{' '}
-            <b>{market.provisionalDate}</b> 的最新報價
-            {market.phase === 'open' ? '（盤中，約 15 分鐘延遲）' : '（收盤價）'}
-            補算成暫定值（{market.quoted} 檔有報價）。等盤後資料入庫會自動換回官方數字。
+          <p className={styles.provisional}>
+            下面的數字是 <b>{market.provisionalDate}</b> 的
+            {market.phase === 'open' ? '盤中' : '收盤'}暫定值
+            <InfoHint label="暫定值是什麼意思">
+              官方收盤檔要等盤後管線抓完才入庫（目前到 <b>{market.officialDate}</b>
+              ），在那之前價、市值、估值與動能都用最新報價
+              {market.phase === 'open' ? '（約 15 分鐘延遲）' : '（當日收盤價）'}
+              等比例推算（{market.quoted} 檔有報價）。資料入庫後會自動換回官方數字。
+              除權息當日的還原價可能有一天誤差。
+            </InfoHint>
           </p>
         )}
         {!market.provisionalDate && market.failed && (
@@ -115,6 +121,11 @@ export function PlannerPage() {
               依 {report.factorLabel} 排名（{report.asOfDate}
               {report.provisionalDate ? '，暫定' : ' 收盤'}）
             </span>
+            <InfoHint label="這份名單怎麼用">
+              這是「假如現在就換股，會持有哪幾檔」。真正要動手的時機以最上面的結論為準 ——
+              非換股日看到名單和手上不一樣是正常的，動能每天都在變，到 {report.nextRebalanceDate}{' '}
+              會重新排一次。
+            </InfoHint>
           </h3>
           {report.targets.length === 0 ? (
             <p className={styles.note}>（空頭，這輪不持股）</p>
@@ -153,10 +164,6 @@ export function PlannerPage() {
               </table>
             </div>
           )}
-          <p className={styles.note}>
-            這是「假如現在就換股」的名單。真正要照著做的時機，以上面的結論為準 ——
-            非換股日看到名單有差異是正常的。
-          </p>
         </div>
 
         <TradeLog

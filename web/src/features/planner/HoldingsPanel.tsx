@@ -2,6 +2,7 @@
  * 我的持股 —— 每檔一列，回答「這檔還能不能抱」「抱多久了」「什麼時候才換得掉」。
  * 持股本身由交易日誌推算（見 `lib/trades.ts`），這裡只顯示。
  */
+import { InfoHint } from '../../components/InfoHint'
 import { METRICS, type MetricKey } from '../../lib/metrics'
 import type { OperatorReport } from '../signal/report'
 import styles from './planner.module.css'
@@ -30,7 +31,28 @@ export function HoldingsPanel({ report, factor }: { report: OperatorReport; fact
   return (
     <div className={styles.card}>
       <h3>
-        我的持股 <span className={styles.sub}>依交易日誌推算；現價為最新報價</span>
+        我的持股 <span className={styles.sub}>依買賣紀錄推算；現價為最新報價</span>
+        <InfoHint label="欄位說明">
+          <ul>
+            <li>
+              <b>已持有</b>：買進日之後經過的交易日數（不含假日）。賣光再買回會重新起算。
+            </li>
+            {swapOn && (
+              <li>
+                <b>可換日</b>：抱滿「最短持有 {report.swapWatch.minHoldDays}{' '}
+                交易日」的日子。在那之前就算有別的股票動能反超，也不會臨時把它換掉 ——
+                <b>但定期換股日不受這個限制</b>。
+              </li>
+            )}
+            <li>
+              <b>停損線</b>：現價跌破這個數字就賣，不必等換股日。括號是離停損還有多少 %。
+            </li>
+            <li>
+              <b>紅底那列</b>＝依最新排名已經掉出前 {report.targets.length}{' '}
+              名，下一個定期換股日會被換掉。
+            </li>
+          </ul>
+        </InfoHint>
       </h3>
       <div className={styles.scroll}>
         <table className={styles.table}>
@@ -44,7 +66,7 @@ export function HoldingsPanel({ report, factor }: { report: OperatorReport; fact
               <th>損益</th>
               <th>市值</th>
               <th>已持有</th>
-              {swapOn && <th>最短持有</th>}
+              {swapOn && <th>可換日</th>}
               <th>停損線</th>
               <th>{report.factorLabel}</th>
               <th>排名</th>
@@ -66,8 +88,15 @@ export function HoldingsPanel({ report, factor }: { report: OperatorReport; fact
                 <td>{money(h.value)}</td>
                 <td>{h.heldDays} 交易日</td>
                 {swapOn && (
-                  <td className={h.minHoldMet ? styles.ok : styles.muted}>
-                    {h.minHoldMet ? '已滿足' : `${h.minHoldUntil} 起`}
+                  <td className={h.minHoldMet ? styles.ok : styles.pending}>
+                    {h.minHoldMet ? (
+                      '✓ 隨時可換'
+                    ) : (
+                      <>
+                        {h.minHoldUntil} 起
+                        <span className={styles.muted}>（還要 {h.minHoldDaysLeft} 天）</span>
+                      </>
+                    )}
                   </td>
                 )}
                 <td className={h.stop?.hit ? styles.warn : undefined}>
@@ -87,10 +116,6 @@ export function HoldingsPanel({ report, factor }: { report: OperatorReport; fact
           </tbody>
         </table>
       </div>
-      <p className={styles.note}>
-        「已掉出名單」= 依最新排名它已經不在前 {report.targets.length} 名，
-        下一個定期換股日就會被換掉（紅底列）。 「停損線」= 跌破就賣，不必等換股日。
-      </p>
     </div>
   )
 }

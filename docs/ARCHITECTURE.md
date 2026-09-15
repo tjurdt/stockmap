@@ -148,6 +148,28 @@
 
 `VITE_QUOTE_URL=off` 可停用；不設則用內建的 worker 網址。
 
+## 資料管線的韌性（抓不到就自動重試）
+
+「今天資料沒更新」在這個專案有四種原因，各有各的保險：
+
+| 原因 | 保險 |
+| --- | --- |
+| 排程沒被觸發（整點是 GitHub 尖峰，會被丟棄） | cron 排在 `13,43`，13:13–21:43 TPE 每 30 分鐘一次 |
+| 來源還沒更新（TWSE / FinMind 慢） | `twse_pipeline.daily` 自行判斷後 `return 0` 跳過，不寫舊資料；下一輪再試 |
+| 來源暫時性錯誤（5xx / 逾時） | `sources/twse.py::_get_json` 重試 3 次、backoff 2s→8s（`test_twse_retry.py`） |
+| 兩個 workflow 同時 push → non-fast-forward | commit 後 `git pull --rebase --autostash` 再 push，重試 3 次（四個會寫 `data/` 的 workflow 都有；因此 checkout 用 `fetch-depth: 0`） |
+
+真的連續失敗好幾天時，`data-freshness`（每日 11:00 TPE）會開 issue。
+前端則因為有暫定當日列，使用者看到的仍是當天的數字，只是標示為暫定。
+
+**新進榜個股**：`rank-universe` 偵測到 `added` 就跑 `backfill --codes`（FinMind，`LOOKBACK_DAYS`
+≈ 5 年、截到 `CAP` = 400 個交易日），所以新股進榜當天就有完整的 20/60/250 日動能，不必等累積。
+這一步失敗（例如 FinMind 額度）會讓整個 job 失敗 → `schema/universe.json` **不會被 commit**，
+下一輪重新偵測、重新回填；設 `FINMIND_TOKEN` secret 可大幅降低額度問題。
+注意 `backfill --codes` 只補 `prices.json`，`data/history/*.jsonl` 的歷史列要等季度的
+`universe-history` 深度重建 —— 所以前端補暫定當日列時，動能算不出來要保留管線的值，不能洗成 null
+（`lib/liveRow.ts`）。
+
 ## 已知取捨
 
 - `data/prices.json` 每日整檔重寫再 commit → git 歷史會隨時間長大（序列上限 400 日，單檔約 50–80 KB）。

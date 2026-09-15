@@ -72,6 +72,8 @@ export interface HoldingRow {
   /** 滿足最短持有的那一天（已滿足則是過去的日期） */
   minHoldUntil: string
   minHoldMet: boolean
+  /** 還要幾個交易日才滿足最短持有（已滿足 = 0） */
+  minHoldDaysLeft: number
   /** 依當前排名仍是目標持股（false = 排程換股日會被換掉） */
   inTargets: boolean
 }
@@ -126,6 +128,8 @@ export interface SwapWatch {
   minHoldReady: boolean
   /** 最快能換股的日期（= 待換持股裡最晚的最短持有到期日的下一個交易日） */
   earliestSwapDate: string | null
+  /** 距離 earliestSwapDate 還有幾個交易日（0 = 就是下一個交易日） */
+  tradingDaysToSwap: number | null
   /** 今天就觸發（下一個交易日執行） */
   triggered: boolean
 }
@@ -435,6 +439,7 @@ export function buildOperatorReport(
       minHoldDays,
       minHoldUntil: addTradingDays(h.entryDate, minHoldDays, holidays),
       minHoldMet: heldDays >= minHoldDays,
+      minHoldDaysLeft: Math.max(0, minHoldDays - heldDays),
       inTargets: targetCodes.has(h.code),
     }
   })
@@ -501,6 +506,14 @@ export function buildOperatorReport(
           .sort((a, b) => a.gap - b.gap)
       : []
   const minHoldReady = outgoing.every((h) => h.minHoldMet)
+  const earliestSwapDate = outgoing.length
+    ? minHoldReady
+      ? next
+      : nextTradingDay(
+          outgoing.map((h) => h.minHoldUntil).reduce((a, b) => (a > b ? a : b)),
+          holidays,
+        )
+    : null
   const swapWatch: SwapWatch = {
     enabled: plan.strategy.swapOnBetter === true,
     marginPct: plan.strategy.swapMargin ?? 0,
@@ -509,13 +522,9 @@ export function buildOperatorReport(
     thresholdFactor,
     challengers,
     minHoldReady,
-    earliestSwapDate: outgoing.length
-      ? minHoldReady
-        ? next
-        : nextTradingDay(
-            outgoing.map((h) => h.minHoldUntil).reduce((a, b) => (a > b ? a : b)),
-            holidays,
-          )
+    earliestSwapDate,
+    tradingDaysToSwap: earliestSwapDate
+      ? tradingDaysBetween(lastRow.date, earliestSwapDate, holidays)
       : null,
     triggered: swapSignal,
   }
