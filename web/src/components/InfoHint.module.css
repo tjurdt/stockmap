@@ -48,6 +48,12 @@
   line-height: 1.85;
   white-space: normal;
 }
+/* 注意：`.panel` 自己宣告了 display，會蓋掉瀏覽器預設的 `[hidden] { display: none }` ——
+   一定要自己補這條（且排在 .panel 之後），否則收合完全失效、面板永遠開著。 */
+.panel[hidden] {
+  display: none;
+}
+
 .panel ul,
 .panel ol {
   margin: 4px 0;
