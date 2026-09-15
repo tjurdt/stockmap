@@ -82,7 +82,7 @@ export function ScatterPage() {
           {stocks.length > 0 ? (
             <>
               <FactorScatter stocks={stocks} opts={opts} />
-              <StockTable stocks={stocks} />
+              <StockTable stocks={stocks} axes={[opts.xKey, opts.yKey]} />
             </>
           ) : (
             <div className={styles.plotbox}>

@@ -48,8 +48,11 @@ section h3 {
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--fs-base);
   background: var(--surface);
+}
+.table tbody tr:hover td {
+  background: var(--accent-soft);
 }
 .table th,
 .table td {

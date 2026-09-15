@@ -38,6 +38,9 @@ React hook → `hooks/`。
 
 6. `cd web && npm run check` 全綠再送 PR。
 
+畫面長相請照 [UI.md](UI.md)：顏色依職務分配、層級用尺度表達、圖表選擇性標籤、
+說明收進 `components/InfoHint`。
+
 ## 頁面現況
 
 | Route | 檔案 | 狀態 |

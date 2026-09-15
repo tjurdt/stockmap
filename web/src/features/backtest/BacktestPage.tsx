@@ -13,6 +13,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
+import { baselineStyle, strategyStyle } from '../../lib/palette'
 import { METRICS } from '../../lib/metrics'
 import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../../lib/rolling'
 import { CompareTable, type CompareRow } from './CompareTable'
@@ -38,7 +39,6 @@ const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
 const cls = (v: number) => (v > 0 ? styles.pos : v < 0 ? styles.neg : undefined)
 
 /** 目前策略固定第一色；鎖定的策略用 1..4。 */
-const COMPARE_COLORS = ['var(--accent)', '#b8560f', '#5b8c5a', '#7a4fb0', '#3a7ca5']
 
 const FACTOR_OPTS = BACKTEST_FACTORS.map((k) => [k, METRICS[k].label] as const)
 const WEEKDAY_OPTS = [
@@ -248,34 +248,36 @@ export function BacktestPage() {
   }, [cfg, startMonth, endMonth, refs, distMonths, distMode, windowMonths])
 
   const series = useMemo(() => {
-    type S = { label: string; values: (number | null)[]; color: string; dashed?: boolean }
+    type S = {
+      label: string
+      values: (number | null)[]
+      color: string
+      dash?: string
+      width: number
+    }
     if (!result) return [] as S[]
-    const s: S[] = [{ label: '策略', values: result.equity, color: COMPARE_COLORS[0]! }]
+    // 策略吃類別色（固定順序、不循環）；基準線一律中性灰 + 各自的虛線樣式，見 lib/palette.ts
+    const s: S[] = [{ label: '策略', values: result.equity, ...strategyStyle(0)! }]
     lockedResults.forEach((r, i) => {
-      s.push({
-        label: locked[i]!.label,
-        values: r.equity,
-        color: COMPARE_COLORS[(i + 1) % COMPARE_COLORS.length]!,
-      })
+      const style = strategyStyle(i + 1)
+      if (style) s.push({ label: locked[i]!.label, values: r.equity, ...style })
     })
     if (locked.length === 0) {
       s.push({
         label: `基準（前 ${poolShown} 等權）`,
         values: result.benchmark,
-        color: 'var(--muted)',
+        ...baselineStyle('pool'),
       })
     }
-    if (refs.twii) {
-      const v = alignNormalized(blData, result.dates, 'twiiTR')
-      if (v) s.push({ label: '大盤(報酬)', values: v, color: '#c8862b', dashed: true })
-    }
-    if (refs.e0050) {
-      const v = alignNormalized(blData, result.dates, 'e0050')
-      if (v) s.push({ label: '0050', values: v, color: '#5b8c5a', dashed: true })
-    }
-    if (refs.e00632r) {
-      const v = alignNormalized(blData, result.dates, 'e00632r')
-      if (v) s.push({ label: '台灣50反1', values: v, color: '#9a3b3b', dashed: true })
+    const refSeries = [
+      ['twii', 'twiiTR', '大盤(報酬)'],
+      ['e0050', 'e0050', '0050'],
+      ['e00632r', 'e00632r', '台灣50反1'],
+    ] as const
+    for (const [key, field, label] of refSeries) {
+      if (!refs[key]) continue
+      const v = alignNormalized(blData, result.dates, field)
+      if (v) s.push({ label, values: v, ...baselineStyle(key) })
     }
     return s
   }, [result, lockedResults, locked, blData, refs, poolShown])
@@ -285,13 +287,13 @@ export function BacktestPage() {
     return [
       {
         label: '目前策略',
-        color: COMPARE_COLORS[0]!,
+        color: strategyStyle(0)!.color,
         metrics: result.metrics,
         hasRegime: (cfg.regime ?? 'off') !== 'off',
       },
       ...lockedResults.map((r, i) => ({
         label: locked[i]!.label,
-        color: COMPARE_COLORS[(i + 1) % COMPARE_COLORS.length]!,
+        color: strategyStyle(i + 1)?.color ?? 'var(--muted)',
         metrics: r.metrics,
         hasRegime: locked[i]!.params.regime !== 'off',
       })),
@@ -630,7 +632,7 @@ export function BacktestPage() {
 
               <LockedBar
                 locked={locked}
-                colorOf={(i) => COMPARE_COLORS[i % COMPARE_COLORS.length]!}
+                colorOf={(i) => strategyStyle(i + 1)?.color ?? 'var(--muted)'}
                 onRemove={remove}
                 onClear={clear}
               />

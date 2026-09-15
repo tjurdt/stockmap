@@ -1,32 +1,32 @@
 .wrap {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 28px 20px 64px;
+  padding: var(--sp-6) var(--sp-5) 64px;
 }
 @media (max-width: 560px) {
   .wrap {
-    padding: 16px 12px 48px;
+    padding: var(--sp-4) var(--sp-3) 48px;
   }
 }
 .header {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 14px;
+  gap: var(--sp-3) var(--sp-4);
   border-bottom: 2px solid var(--ink);
-  padding-bottom: 12px;
-  margin-bottom: 22px;
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-5);
 }
 .title {
-  font-size: 24px;
-  font-weight: 650;
+  font-size: var(--fs-xl);
+  font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
 }
 .nav {
   display: flex;
-  gap: 14px;
-  font-size: 14px;
+  gap: var(--sp-1);
+  font-size: var(--fs-base);
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -35,19 +35,26 @@
 .nav::-webkit-scrollbar {
   display: none;
 }
+/* 分頁鈕：整塊可點，不是只有兩個字 */
 .nav a {
   text-decoration: none;
   color: var(--muted);
-  padding-bottom: 2px;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
   white-space: nowrap;
 }
+.nav a:hover {
+  background: var(--surface);
+  color: var(--ink-2);
+}
 .nav a.active {
-  color: var(--ink);
-  border-bottom: 2px solid var(--accent);
+  color: #fff;
+  background: var(--accent);
+  font-weight: 600;
 }
 .asof {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   margin-left: auto;
 }
 @media (max-width: 560px) {
@@ -58,8 +65,8 @@
   }
 }
 .footer {
-  margin-top: 26px;
-  font-size: 12.5px;
+  margin-top: var(--sp-6);
+  font-size: var(--fs-sm);
   color: var(--muted);
   line-height: 1.7;
 }

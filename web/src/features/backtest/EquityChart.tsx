@@ -13,8 +13,10 @@ interface Series {
   label: string
   values: (number | null)[]
   color: string
-  /** true = 虛線（基準用） */
-  dashed?: boolean
+  /** SVG stroke-dasharray；基準線用它區分身分（圖例會畫出同樣的線樣） */
+  dash?: string
+  /** 線寬；策略 2、基準 1.5，讓策略是主角 */
+  width: number
 }
 
 interface Props {
@@ -126,8 +128,9 @@ export function EquityChart({
             x={(_, i) => x(i)}
             y={(v) => y(v ?? lo)}
             stroke={s.color}
-            strokeWidth={1.6}
-            strokeDasharray={s.dashed ? '4 3' : undefined}
+            strokeWidth={s.width}
+            strokeDasharray={s.dash}
+            strokeLinecap="round"
             fill="none"
           />
         ))}
@@ -137,7 +140,15 @@ export function EquityChart({
         {series.map((s) => {
           const v = s.values[cur]
           return v == null ? null : (
-            <circle key={s.label} cx={x(cur)} cy={y(v)} r={3} fill={s.color} />
+            <circle
+              key={s.label}
+              cx={x(cur)}
+              cy={y(v)}
+              r={4}
+              fill={s.color}
+              stroke="var(--surface)"
+              strokeWidth={2}
+            />
           )
         })}
       </svg>
@@ -145,8 +156,20 @@ export function EquityChart({
       <div className={styles.legend}>
         {series.map((s) => (
           <span key={s.label}>
-            <i style={{ background: s.color }} /> {s.label}{' '}
-            <b>{s.values[cur]?.toFixed(2) ?? '—'}</b>
+            {/* 圖例畫的是「實際的線」—— 基準線靠虛線樣式區分身分，實心方塊看不出來 */}
+            <svg className={styles.legendMark} viewBox="0 0 18 8" aria-hidden="true">
+              <line
+                x1={0}
+                y1={4}
+                x2={18}
+                y2={4}
+                stroke={s.color}
+                strokeWidth={s.width}
+                strokeDasharray={s.dash}
+                strokeLinecap="round"
+              />
+            </svg>
+            {s.label} <b>{s.values[cur]?.toFixed(2) ?? '—'}</b>
           </span>
         ))}
         <span className={styles.cursorDate}>{dates[cur]}</span>
