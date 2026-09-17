@@ -1,12 +1,11 @@
 /**
  * 操作計畫 —— 策略設定 + 上線日 + 交易日誌（持股由日誌推算）。
  *
- * 網站端存在瀏覽器 localStorage（每台裝置一份）；每晚提醒信的「單一事實來源」
- * 則是 GitHub Actions secret `OPERATOR_PLAN`（本檔 `operatorPlanSchema` 的 JSON）。
+ * 只存在瀏覽器 localStorage（每台裝置一份，`operatorPlanSchema` 的 JSON）。
  * zod schema 需與 `schema/operator_plan.schema.json` 對齊（`plan.contract.test.ts` 會擋 drift）。
  *
- * `holdings` 仍是契約裡的欄位（提醒信只讀它）；有 `trades` 時 holdings 由 `buildLedger`
- * 推算後寫進去，使用者只需要維護交易日誌。
+ * `holdings` 仍是契約裡的欄位（舊格式、`buildOperatorReport` 讀它）；有 `trades` 時 holdings
+ * 由 `buildLedger` 推算後寫進去，使用者只需要維護交易日誌。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
@@ -18,9 +17,25 @@ import { buildLedger, tradesFromPositions, type Trade } from './trades'
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 export const strategySchema = z.object({
-  factor: z.enum(['price', 'mcap', 'pe', 'pb', 'dy', 'chg', 'turn', 'm20', 'm60', 'm121']),
+  factor: z.enum([
+    'price',
+    'mcap',
+    'pe',
+    'pb',
+    'dy',
+    'chg',
+    'turn',
+    'm20',
+    'm60',
+    'm121',
+    'custom',
+  ]),
   momDays: z.number().int().nonnegative(),
   momSkip: z.number().int().nonnegative(),
+  /** 只在 factor==='custom' 時有意義；公式見 `lib/formula.ts`。 */
+  customFormula: z.string(),
+  customLabel: z.string(),
+  customBetterWhen: z.enum(['high', 'low']),
   topN: z.number().int().positive(),
   poolTopN: z.number().int().positive(),
   rebalance: z.enum(['W', 'M']),
@@ -79,7 +94,7 @@ export function defaultPlan(strategy: StrategyParams = DEFAULT_PARAMS): PlanStat
   return { startDate: new Date().toISOString().slice(0, 10), strategy, trades: [] }
 }
 
-/** 交易日誌 → 提醒信契約用的持股清單。 */
+/** 交易日誌 → 操作計畫契約用的持股清單。 */
 export function holdingsOf(trades: Trade[]): Position[] {
   return buildLedger(trades).positions.map((p) => ({
     code: p.code,

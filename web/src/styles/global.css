@@ -12,12 +12,30 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  /* 數字等寬：表格上下對齊、跳動的報價不會左右抖 */
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 a {
   color: var(--accent);
+}
+/* 標題一律由 token 決定大小，不靠瀏覽器預設 */
+h2 {
+  font-size: var(--fs-xl);
+  margin: 0 0 var(--sp-3);
+}
+h3 {
+  font-size: var(--fs-md);
+}
+h4 {
+  font-size: var(--fs-base);
+}
+/* 鍵盤操作看得見焦點 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 svg {
   display: block;

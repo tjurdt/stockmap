@@ -1,5 +1,5 @@
 /**
- * 操作報告 —— 純函式，操作計畫頁 / 每晚提醒信共用的單一事實來源。
+ * 操作報告 —— 純函式，操作計畫頁的單一事實來源。
  *
  * 輸入：因子歷史 + 大盤基準 + 一份操作計畫（策略 + 上線日 + 目前持股）。
  * 輸出：一份「到今天為止、我該知道的一切」結構，交給各處各自渲染。
@@ -14,7 +14,7 @@
 import type { BaselineRow } from '../../lib/baselines'
 import { addTradingDays, nextTradingDay, tradingDaysBetween } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
-import { METRICS } from '../../lib/metrics'
+import { factorBetterWhen, factorLabel, metricField } from '../../lib/metrics'
 import type { OperatorPlan } from '../../lib/plan'
 import {
   factorRanking,
@@ -23,7 +23,7 @@ import {
   rankTargets,
   regimeByDate,
   shouldSwap,
-  withCustomMomentum,
+  withComputedFactors,
   type BacktestConfig,
 } from '../backtest/engine'
 
@@ -137,7 +137,7 @@ export interface SwapWatch {
 export type VerdictKind =
   'not-started' | 'entry' | 'stop' | 'bear-exit' | 'rebalance' | 'swap' | 'hold'
 
-/** 「明天到底要幹嘛」—— 網站大字與提醒信標題共用。 */
+/** 「明天到底要幹嘛」—— 網站大字用。 */
 export interface Verdict {
   kind: VerdictKind
   /** 要不要動手 */
@@ -205,10 +205,10 @@ const cfgOf = (plan: OperatorPlan): BacktestConfig => ({ ...plan.strategy, costB
 
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 
-function strategySummary(plan: OperatorPlan, factorLabel: string): string {
+function strategySummary(plan: OperatorPlan, factorLabelText: string): string {
   const s = plan.strategy
   const parts = [
-    `${factorLabel} 高者佳`,
+    `${factorLabelText} 高者佳`,
     `市值前 ${s.poolTopN} 選前 ${s.topN} 檔`,
     s.rebalance === 'M'
       ? `每月第 ${s.rebalanceDay} 個交易日再平衡`
@@ -270,13 +270,13 @@ export function buildOperatorReport(
   const prevRow = rows.at(-2)
 
   const cfg = cfgOf(plan)
-  // 自訂動能窗：把因子欄位換成重算值，排名一律用這份
-  const fRows = withCustomMomentum(rows, cfg)
+  // 自訂動能窗 / 自訂指標：把因子欄位換成重算值，排名一律用這份
+  const fRows = withComputedFactors(rows, cfg)
   const fLast = fRows.at(-1)!
-  const custom = (cfg.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(cfg.factor)
-  const factorLabel = custom
+  const customMomWindow = (cfg.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(cfg.factor)
+  const factorLabelText = customMomWindow
     ? `自訂動能 ${cfg.momDays}${(cfg.momSkip ?? 0) > 0 ? `-${cfg.momSkip}` : ''} 日`
-    : METRICS[cfg.factor].label
+    : factorLabel(cfg)
 
   const regimeMap = regimeByDate(
     [prevRow?.date ?? lastRow.date, lastRow.date],
@@ -322,7 +322,7 @@ export function buildOperatorReport(
   const factorOf = (code: string): number | null => {
     const s = fLast.stocks.find((x) => x.code === code)
     if (!s) return null
-    const v = (s as Record<string, unknown>)[METRICS[cfg.factor].field]
+    const v = (s as Record<string, unknown>)[metricField(cfg.factor)]
     return typeof v === 'number' && Number.isFinite(v) ? v : null
   }
   const heldDaysOf = (code: string): number => {
@@ -479,7 +479,7 @@ export function buildOperatorReport(
   const nextRebal = nextRebalanceDate(lastRow.date, cfg.rebalance, cfg.rebalanceDay ?? 1, holidays)
 
   // ── 動能換股監看：誰會被換掉、挑戰者要贏多少、最快哪天換得動 ──────────────
-  const dir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
+  const dir = factorBetterWhen(cfg) === 'high' ? 1 : -1
   const margin = Math.max(0, (plan.strategy.swapMargin ?? 0) / 100)
   const outgoing = holdings.filter(
     (h): h is HoldingRow & { factor: number } => !h.inTargets && h.factor != null,
@@ -602,8 +602,8 @@ export function buildOperatorReport(
     provisionalDate: opts.provisionalDate ?? null,
     started,
     startDate: plan.startDate,
-    factorLabel,
-    strategySummary: strategySummary(plan, factorLabel),
+    factorLabel: factorLabelText,
+    strategySummary: strategySummary(plan, factorLabelText),
     regime,
     regimeChangedFrom,
     isSignalDay,

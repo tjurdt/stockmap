@@ -7,13 +7,13 @@
  * 這兩道只管「非排程日的臨時換股」；排程換股日一到照樣整批換（優先序見 report.ts 檔頭）。
  */
 import { InfoHint } from '../../components/InfoHint'
-import { METRICS, type MetricKey } from '../../lib/metrics'
+import { factorFmt, type MetricKey } from '../../lib/metrics'
 import type { OperatorReport } from '../signal/report'
 import styles from './planner.module.css'
 
 export function SwapWatchPanel({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
   const w = report.swapWatch
-  const fmt = METRICS[factor].fmt
+  const fmt = factorFmt(factor)
 
   if (!w.enabled) {
     return (

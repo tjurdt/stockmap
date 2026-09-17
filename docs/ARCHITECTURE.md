@@ -41,7 +41,6 @@
 | `data/history/factors-YYYY.jsonl` | `twse_pipeline.history` | 回測 / 因子績效 | `schema/history.schema.json` ↔ `web/src/lib/history.ts` (zod) |
 | `schema/universe.json` | 人工維護 | `twse_pipeline.config` | 成分股 + 在外流通股數 |
 | `data/prices.json` | `twse_pipeline.prices` | 只有管線自己（算動能） | 內部格式，前端不讀 |
-| `OPERATOR_PLAN` (secret) | 網站「操作計畫」頁 | `notify` workflow（`web/scripts/operator-report.ts`） | `schema/operator_plan.schema.json` ↔ `web/src/lib/plan.ts` (zod) |
 | `data/baselines.jsonl` | `twse_pipeline.baselines` | 回測圖表 / regime / 空頭反 1 | `schema/baselines.schema.json` ↔ `web/src/lib/baselines.ts`（twiiTR / e0050 / e00632r）|
 | `data/calendar.json` | `twse_pipeline.calendar`（TWSE holidaySchedule）| 換股時點、下一個交易日 | `schema/calendar.schema.json` ↔ `web/src/lib/calendar.ts` |
 
@@ -99,33 +98,30 @@
 `universe_history` 之後、下次 backfill 之前的新日期，因子列只含顯示 universe(60)（下次 backfill 補回）。
 前約 1 年 mom121 為 null。
 
-## 操作計畫與每日提醒信
+## 操作計畫
 
 `engine.ts` 的換股時點由 `rebalanceDay` 決定（`M`：每月**第 N 個交易日**，1 = 月初第一個；
 `W`：每週星期幾）。`rebalanceDates`（回測，交易日直接來自 factor history）與 `isRebalanceDay` /
-`nextRebalanceDate`（即時 / 提醒信，用 `data/calendar.json` 的休市日）共用同一套邏輯。
+`nextRebalanceDate`（即時，用 `data/calendar.json` 的休市日）共用同一套邏輯。
 「跟上線日同順位」= `tradingDayOrdinal(startDate)`，讓實單和回測對齊。
 
 `web/src/features/signal/report.ts` 的 `buildOperatorReport(history, baselines, plan, names, opts)`
 是純函式，吃一份操作計畫（策略 + 上線日 + 交易日誌推算出的持股）吐出「到今天為止該知道的一切」，
 包含兩個給人看的結論欄位：
 
-- `verdict` —— 明天要不要動手、一句話結論 + 補充（網站大字、提醒信主旨共用）。
+- `verdict` —— 明天要不要動手、一句話結論 + 補充。
 - `swapWatch` —— 手上最弱的是哪檔、挑戰者要達到多少因子值、最快哪天換得動（最短持有到期）。
 
-兩處消費：操作計畫頁 `/plan`（`features/planner/`）與每晚提醒信
-（`web/scripts/operator-report.ts`，`npm run report`，以 `tsx` 執行、讀 committed `data/` +
-`OPERATOR_PLAN` env、寫 `web/tmp/email.{html,txt}`）。舊的 `/signal` 頁已併入 `/plan`（保留轉址）。
+唯一消費者：操作計畫頁 `/plan`（`features/planner/`）。舊的 `/signal` 頁已併入 `/plan`（保留轉址）。
 
 **規則優先序**（`runBacktest` 的迴圈順序，`report.ts` 檔頭也寫了同一份）：
 停損 → `regimeExit='immediate'` 轉空清空 → **排程換股日** → 動能換股。
 `swapMinHoldDays` 只是動能換股的閘門；排程換股日一到就照當日排名整批換，最短持有擋不住。
 `pipeline` 無關，但 `report.test.ts` 有測試釘住這個先後順序。
 
-計畫本身不 commit（含持股成本）：網站端存 localStorage（含逐筆交易日誌 `lib/trades.ts`，
-持股 / 加權成本 / 這一段持有的起算日都由它推算），寄信端存 GitHub secret `OPERATOR_PLAN`。
-`notify` workflow 每交易日 19:00 TPE 跑腳本、用 `dawidd6/action-send-mail` + Gmail SMTP 寄出；
-缺 secret 就不寄。
+計畫本身不 commit（含持股成本）：只存瀏覽器 localStorage（`schema/operator_plan.schema.json`
+↔ `web/src/lib/plan.ts`，`plan.contract.test.ts` 擋兩邊 drift），含逐筆交易日誌 `lib/trades.ts`，
+持股 / 加權成本 / 這一段持有的起算日都由它推算。每台裝置各自一份，不跨裝置同步。
 
 ## 報價與「暫定當日資料」
 

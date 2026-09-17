@@ -15,7 +15,9 @@
 
 .panelWrap {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
 }
 @media (min-width: 821px) {
   .panelWrap > summary {
@@ -86,13 +88,17 @@
 
 .quotes {
   background: var(--surface);
-  border: 1px solid var(--line);
-  margin-top: 16px;
-  font-size: 12.5px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  margin-top: var(--sp-4);
+  font-size: var(--fs-sm);
 }
 .quotesHead {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--hair);
   font-weight: 600;
   color: var(--muted);
   display: flex;
@@ -129,42 +135,103 @@
 
 .plotbox {
   background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 8px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
 }
+/* 格線與軸要退到背景 —— 主角是資料點 */
 .grid {
-  stroke: var(--hair);
+  stroke: var(--chart-grid);
   stroke-width: 1;
 }
 .median {
-  stroke: var(--line);
+  stroke: var(--chart-axis);
   stroke-width: 1;
   stroke-dasharray: 3 4;
 }
 .axis {
-  stroke: var(--ink);
-  stroke-width: 1.25;
+  stroke: var(--chart-axis);
+  stroke-width: 1;
 }
 .tick {
   fill: var(--muted);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 .axtitle {
-  fill: var(--ink);
-  font-size: 13px;
+  fill: var(--ink-2);
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 .qlab {
   fill: var(--muted);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
 }
-.dot {
+
+.dotGroup,
+.dotOn {
   cursor: pointer;
 }
+/* hover 時其餘淡出，視線只會落在一個點上 */
+.dimmed .dotGroup {
+  opacity: 0.28;
+}
+.dotOn {
+  opacity: 1;
+}
+/* 看不見但點得到的命中區 */
+.hit {
+  fill: transparent;
+}
 .dlab {
-  font-size: 11px;
-  fill: var(--ink);
+  font-size: var(--fs-xs);
+  fill: var(--ink-2);
   pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.dotOn .dlab {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+  padding: var(--sp-2) var(--sp-1) var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+.chartLegend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: -1px;
+  margin-right: var(--sp-1);
+}
+.swUp {
+  background: color-mix(in srgb, var(--up) 26%, transparent);
+  border: 1.6px solid var(--up);
+}
+.swDown {
+  background: color-mix(in srgb, var(--down) 26%, transparent);
+  border: 1.6px solid var(--down);
+}
+.swFlat {
+  background: color-mix(in srgb, var(--flat) 26%, transparent);
+  border: 1.6px solid var(--flat);
+}
+.legendNote {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.chartLegend .legendNote:last-child {
+  margin-left: auto;
 }
 
 .tooltip {
@@ -172,9 +239,11 @@
   pointer-events: none;
   background: var(--ink);
   color: #fff;
-  padding: 7px 9px;
-  font-size: 12px;
-  line-height: 1.5;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
   z-index: 9;
   white-space: nowrap;
 }
@@ -182,8 +251,10 @@
 .tablewrap {
   max-height: 360px;
   overflow: auto;
-  border: 1px solid var(--line);
-  margin-top: 20px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  margin-top: var(--sp-5);
 }
 .table {
   width: 100%;
@@ -210,7 +281,47 @@
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
-  background: var(--surface);
+  background: var(--surface-sunken);
+}
+/* 掃視長表格時，滑過的那一列要看得出來 */
+.table tbody tr:hover td {
+  background: var(--accent-soft);
+}
+/* 可排序表頭：整格可點 */
+.sortBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  justify-content: inherit;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sortBtn:hover {
+  color: var(--ink);
+}
+.sortBtn[data-on='true'] {
+  color: var(--accent);
+  font-weight: 700;
+}
+.sortMark {
+  font-size: 9px;
+  opacity: 0.45;
+}
+.sortBtn[data-on='true'] .sortMark {
+  opacity: 1;
+}
+/* 圖上正在畫的兩個因子 —— 表與圖看的是同一件事 */
+.axisCol {
+  background: var(--accent-soft);
+}
+.table tbody tr:hover td.axisCol {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
 }
 .pos {
   color: var(--up);

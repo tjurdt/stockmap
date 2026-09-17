@@ -1,5 +1,5 @@
-/** 把一份 OperatorReport 渲染成網頁區塊（操作計畫頁預覽用；與每晚提醒信同一份資料）。 */
-import { METRICS, type MetricKey } from '../../lib/metrics'
+/** 把一份 OperatorReport 渲染成網頁區塊 —— 操作計畫頁的完整報告（動能排行 vs 持股）。 */
+import { factorFmt, type MetricKey } from '../../lib/metrics'
 import type { OperatorReport } from './report'
 import styles from './signal.module.css'
 
@@ -10,7 +10,7 @@ const price = (v: number | null | undefined) =>
 const money = (v: number | null | undefined) => (v == null ? '—' : Math.round(v).toLocaleString())
 
 export function ReportView({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
-  const fmt = METRICS[factor].fmt
+  const fmt = factorFmt(factor)
   const flabel = report.factorLabel
 
   return (

@@ -8,6 +8,9 @@ export type StrategyParams = Required<
     | 'factor'
     | 'momDays'
     | 'momSkip'
+    | 'customFormula'
+    | 'customLabel'
+    | 'customBetterWhen'
     | 'topN'
     | 'poolTopN'
     | 'rebalance'
@@ -33,6 +36,9 @@ export const DEFAULT_PARAMS: StrategyParams = {
   factor: 'm121',
   momDays: 0,
   momSkip: 0,
+  customFormula: '',
+  customLabel: '',
+  customBetterWhen: 'high',
   topN: 5,
   poolTopN: 50,
   rebalance: 'M',
@@ -58,6 +64,9 @@ export function encodeParams(p: StrategyParams): string {
     factor: p.factor,
     momDays: String(p.momDays),
     momSkip: String(p.momSkip),
+    customFormula: p.customFormula,
+    customLabel: p.customLabel,
+    customBetterWhen: p.customBetterWhen,
     topN: String(p.topN),
     pool: String(p.poolTopN),
     rebal: p.rebalance,
@@ -95,6 +104,9 @@ export function decodeParams(qs: string): StrategyParams {
     factor: (q.get('factor') as MetricKey) || DEFAULT_PARAMS.factor,
     momDays: numNonNeg('momDays', DEFAULT_PARAMS.momDays),
     momSkip: numNonNeg('momSkip', DEFAULT_PARAMS.momSkip),
+    customFormula: q.get('customFormula') ?? DEFAULT_PARAMS.customFormula,
+    customLabel: q.get('customLabel') ?? DEFAULT_PARAMS.customLabel,
+    customBetterWhen: q.get('customBetterWhen') === 'low' ? 'low' : 'high',
     topN: num('topN', DEFAULT_PARAMS.topN),
     poolTopN: num('pool', DEFAULT_PARAMS.poolTopN),
     rebalance: q.get('rebal') === 'W' ? 'W' : 'M',

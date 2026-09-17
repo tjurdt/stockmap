@@ -23,8 +23,7 @@
 
 資料流：`Actions cron → pipeline 抓 TWSE OpenAPI → 寫 data/ → commit → deploy.yml build web + 併入 data/ → GitHub Pages`。詳見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-其他 workflow：`notify`（每交易日晚上，`web/scripts/operator-report.ts` 用前端 `buildOperatorReport`
-算訊號 → Gmail SMTP 寄操作提醒信，讀 secret `OPERATOR_PLAN`）、`data-freshness`（`data/` 停擺就開 issue）。
+其他 workflow：`data-freshness`（`data/` 停擺就開 issue）。
 
 ## 指令
 
@@ -75,7 +74,7 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
    操作計畫契約：`schema/operator_plan.schema.json` ↔ `web/src/lib/plan.ts`。
 6. 每個 lib 純函式（`web/src/lib/`、`twse_pipeline/util.py`、`factors.py`）都應有對應測試。
 7. **「明天要幹嘛」只有一份事實來源**：`web/src/features/signal/report.ts::buildOperatorReport`
-   （含 `verdict` / `swapWatch`）。網站 `/plan` 與每晚提醒信都只渲染它，不自己重算規則。
+   （含 `verdict` / `swapWatch`）。網站 `/plan` 只渲染它，不自己重算規則。
 
 ## 擴充
 
@@ -84,7 +83,9 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 
 ## 慣例
 
-- 台股慣例：**漲=紅（`--up`）、跌=綠（`--down`）**。色碼一律用 `web/src/styles/tokens.css` 的變數。
+- 台股慣例：**漲=紅（`--up`）、跌=綠（`--down`）**。色碼一律用 `web/src/styles/tokens.css` 的變數；
+  圖表系列色只能從 `web/src/lib/palette.ts` 拿（固定順序、不循環、基準線用中性灰）。
+  視覺與資訊設計準則見 [docs/UI.md](docs/UI.md) —— 加圖表 / 加頁面前先讀。
 - 前端每個 feature 自成 `web/src/features/<name>/`，共用邏輯才上提到 `lib/` / `components/` / `hooks/`。
 - **畫面上不要堆細字**：一個區塊只留一句白話結論，欄位定義 / 規則細節 / 操作提示一律收進
   `components/InfoHint`（ⓘ 鈕，點了才展開）。

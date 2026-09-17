@@ -1,7 +1,7 @@
 /**
  * 「明天要幹嘛」—— 操作計畫頁的主角。
  *
- * 結論（`report.verdict`）與提醒信是同一份資料，這裡只負責把它變成看得懂的畫面：
+ * 結論來自 `report.verdict`，這裡只負責把它變成看得懂的畫面：
  * 一句大字 + 編號步驟 + 三個關鍵日期。
  */
 import { InfoHint } from '../../components/InfoHint'

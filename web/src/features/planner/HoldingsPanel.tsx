@@ -3,7 +3,7 @@
  * 持股本身由交易日誌推算（見 `lib/trades.ts`），這裡只顯示。
  */
 import { InfoHint } from '../../components/InfoHint'
-import { METRICS, type MetricKey } from '../../lib/metrics'
+import { factorFmt, type MetricKey } from '../../lib/metrics'
 import type { OperatorReport } from '../signal/report'
 import styles from './planner.module.css'
 
@@ -14,7 +14,7 @@ const price = (v: number | null | undefined) =>
 const money = (v: number | null | undefined) => (v == null ? '—' : Math.round(v).toLocaleString())
 
 export function HoldingsPanel({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
-  const fmt = METRICS[factor].fmt
+  const fmt = factorFmt(factor)
   const swapOn = report.swapWatch.enabled && report.swapWatch.minHoldDays > 0
 
   if (report.holdings.length === 0) {

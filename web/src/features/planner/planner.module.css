@@ -9,8 +9,10 @@
 /* ── ① 明天要幹嘛（大字結論） ───────────────────────────── */
 .verdict {
   border: 2px solid var(--line);
+  border-radius: var(--r-lg);
   background: var(--surface);
-  padding: 18px 20px;
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-5);
 }
 .verdictAct {
   border-color: var(--up);
@@ -27,7 +29,7 @@
   margin: 0 0 6px;
 }
 .verdictHead {
-  font-size: 26px;
+  font-size: var(--fs-2xl);
   font-weight: 700;
   line-height: 1.4;
   margin: 0;
@@ -60,8 +62,10 @@
 .fact {
   flex: 1 1 160px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 10px 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-3) var(--sp-4);
 }
 .factSwap {
   background: var(--tone-swap);
@@ -69,13 +73,15 @@
 }
 
 .factLabel {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--muted);
-  margin: 0 0 3px;
+  margin: 0 0 var(--sp-1);
 }
 .factValue {
-  font-size: 17px;
+  font-size: var(--fs-lg);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 .factNote {
@@ -87,11 +93,13 @@
 /* ── 一般區塊 ─────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 14px 16px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-4) var(--sp-5);
 }
 .card > h3 {
-  font-size: 15px;
+  font-size: var(--fs-md);
   margin: 0 0 10px;
   border-bottom: 1px solid var(--ink);
   padding-bottom: 5px;
@@ -192,7 +200,7 @@
 }
 .table th,
 .table td {
-  padding: 7px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--hair);
   text-align: right;
   white-space: nowrap;
@@ -204,7 +212,14 @@
 .table th {
   color: var(--muted);
   font-weight: 600;
+  background: var(--surface-sunken);
   border-bottom: 1px solid var(--line);
+}
+.table tbody tr:hover td {
+  background: var(--accent-soft);
+}
+.rowOut:hover td {
+  background: var(--up-soft);
 }
 .rowOut td {
   background: color-mix(in srgb, var(--down) 8%, transparent);
@@ -242,8 +257,9 @@
 .watchBox {
   flex: 1 1 180px;
   border: 1px solid var(--line);
+  border-radius: var(--r-md);
   background: var(--tone-swap);
-  padding: 9px 11px;
+  padding: var(--sp-3) var(--sp-4);
 }
 .watchBox p {
   margin: 0;
@@ -261,12 +277,13 @@
   margin-bottom: 2px;
 }
 .ruleNote {
-  margin: 12px 0 0;
-  font-size: 12.5px;
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-sm);
   line-height: 1.8;
   background: var(--tone-risk);
   border: 1px solid var(--line);
-  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
 }
 
 /* ── ⑥ 買賣紀錄 ───────────────────────────────────────── */
@@ -328,8 +345,10 @@
 /* ── 設定 / 進階（摺疊） ──────────────────────────────── */
 .fold {
   background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 0 16px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  padding: 0 var(--sp-5);
 }
 .fold > summary {
   cursor: pointer;
@@ -361,9 +380,6 @@
 }
 .gStrategy {
   --section-bg: var(--tone-pick);
-}
-.gExport {
-  --section-bg: var(--tone-cost);
 }
 .field {
   display: block;
@@ -418,39 +434,6 @@
   font-size: 12.5px;
   display: inline-block;
   margin-top: 2px;
-}
-.copyBtn {
-  width: 100%;
-  padding: 9px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-}
-.mailSteps {
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--muted);
-  padding-left: 18px;
-  margin: 10px 0 0;
-}
-.mailSteps code {
-  background: var(--bg);
-  padding: 0 3px;
-}
-.raw {
-  margin-top: 10px;
-  font-size: 12px;
-}
-.raw pre {
-  background: var(--bg);
-  border: 1px solid var(--hair);
-  padding: 8px;
-  overflow-x: auto;
-  font-size: 11px;
-  line-height: 1.5;
 }
 
 /* 資料新鮮度 */

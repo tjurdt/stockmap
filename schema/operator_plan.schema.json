@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/tjurdt/stockmap/schema/operator_plan.schema.json",
   "title": "StockMap operator plan",
-  "description": "操作計畫：策略設定 + 上線日 + 交易日誌 / 目前持股。存在 GitHub Actions secret OPERATOR_PLAN，供每晚提醒信使用。前端 zod schema 見 web/src/lib/plan.ts。",
+  "description": "操作計畫：策略設定 + 上線日 + 交易日誌 / 目前持股。存在瀏覽器 localStorage（每台裝置一份）。前端 zod schema 見 web/src/lib/plan.ts。",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "startDate", "strategy", "holdings"],
@@ -11,7 +11,7 @@
     "startDate": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "策略上線日；此日之前提醒信只給「上線當天要買的目標清單」"
+      "description": "策略上線日；此日之前只顯示「上線當天要買的目標清單」"
     },
     "strategy": { "$ref": "#/definitions/strategy" },
     "holdings": {
@@ -30,15 +30,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "factor", "momDays", "momSkip", "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
+        "factor", "momDays", "momSkip", "customFormula", "customLabel", "customBetterWhen",
+        "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
         "execLagDays", "stopType", "stopPct", "stopMaDays", "stopExecNext",
         "swapOnBetter", "swapMargin", "swapMinHoldDays", "swapExecNext",
         "regime", "regimeDays", "regimeExit", "bearHolding"
       ],
       "properties": {
         "factor": {
-          "enum": ["price", "mcap", "pe", "pb", "dy", "chg", "turn", "m20", "m60", "m121"],
-          "description": "排名因子 key（對齊 web/src/lib/metrics.ts）"
+          "enum": ["price", "mcap", "pe", "pb", "dy", "chg", "turn", "m20", "m60", "m121", "custom"],
+          "description": "排名因子 key（對齊 web/src/lib/metrics.ts）；custom = 使用者自訂指標"
         },
         "momDays": {
           "type": "integer",
@@ -49,6 +50,18 @@
           "type": "integer",
           "minimum": 0,
           "description": "自訂動能跳過最近幾個交易日（0 = 不跳）"
+        },
+        "customFormula": {
+          "type": "string",
+          "description": "使用者自訂指標運算式（只在 factor==='custom' 時有意義，空字串 = 未設定）"
+        },
+        "customLabel": {
+          "type": "string",
+          "description": "自訂指標顯示名稱（factor==='custom' 時用；空字串 = 未命名）"
+        },
+        "customBetterWhen": {
+          "enum": ["high", "low"],
+          "description": "自訂指標排序方向：數值越大/越小越好（factor==='custom' 時用）"
         },
         "topN": { "type": "integer", "minimum": 1, "description": "持股檔數" },
         "poolTopN": { "type": "integer", "minimum": 1, "description": "選股池：當日市值前 N 大" },

@@ -1,10 +1,10 @@
 import { Layout } from '../../components/Layout'
 import { useLiveSnapshot } from '../../hooks/useLiveSnapshot'
 import { NA } from '../../lib/format'
-import { METRICS, metricValue, type MetricKey } from '../../lib/metrics'
+import { METRICS, metricValue, type BuiltinMetricKey } from '../../lib/metrics'
 
 // TODO: 排行榜功能待建。目前先示範以「近月動能」排序，證明資料層可用。
-const SORT_KEY: MetricKey = 'm20'
+const SORT_KEY: BuiltinMetricKey = 'm20'
 
 export function RankingPage() {
   const { snap, stocks, market, asOf } = useLiveSnapshot()
