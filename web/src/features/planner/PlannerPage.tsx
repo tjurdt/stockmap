@@ -1,7 +1,7 @@
 /**
  * 操作計畫 —— 「明天要幹嘛」的單一入口（舊的 /signal 已併進來）。
  *
- * 所有訊號都來自 `features/signal/report.ts::buildOperatorReport`，與每晚提醒信同一份邏輯；
+ * 所有訊號都來自 `features/signal/report.ts::buildOperatorReport`；
  * 這頁不自己算任何規則，只負責把結論講成人話。
  *
  * 資料新鮮度：因子歷史（官方收盤）之外，再用最新報價補一列暫定的當日資料
@@ -19,7 +19,7 @@ import { loadBaselines } from '../../lib/baselines'
 import { loadCalendar } from '../../lib/calendar'
 import { loadAllFactorHistory } from '../../lib/history'
 import { freshnessLabel } from '../../lib/liveRow'
-import { METRICS } from '../../lib/metrics'
+import { factorFmt } from '../../lib/metrics'
 import { holdingsOf, toPlanJson, useOperatorPlan } from '../../lib/plan'
 import { decodeParams } from '../backtest/strategyParams'
 import { buildOperatorReport } from '../signal/report'
@@ -151,7 +151,7 @@ export function PlannerPage() {
                         <td>
                           {t.code} {t.name}
                         </td>
-                        <td>{METRICS[factor].fmt(t.factor)}</td>
+                        <td>{factorFmt(factor)(t.factor)}</td>
                         <td>{price(t.price)}</td>
                         <td>{(t.weight * 100).toFixed(0)}%</td>
                         <td className={held ? styles.ok : styles.warn}>
@@ -183,7 +183,7 @@ export function PlannerPage() {
         />
 
         <details className={styles.fold}>
-          <summary>📧 每晚提醒信預覽（含動能排行 vs 我的持股）</summary>
+          <summary>📊 完整報告（動能排行 vs 我的持股）</summary>
           <div className={styles.foldBody}>
             <ReportView report={report} factor={factor} />
           </div>

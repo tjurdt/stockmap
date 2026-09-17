@@ -47,7 +47,7 @@ React hook → `hooks/`。
 | --- | --- | --- |
 | `/`（因子散佈圖） | `features/scatter/` | 完成；含最新報價 overlay（`useLiveSnapshot`）+ 報價清單 |
 | `/backtest` | `features/backtest/` | 完成：因子排名回測（point-in-time 選股池、停損、多空過濾、成交延遲、月份區間、互動游標、大盤/0050 參照）。設定編碼在 URL query（`strategyParams.ts`） |
-| `/plan`（操作計畫） | `features/planner/` | 完成：唯一的「明天要幹嘛」入口。訊號全部來自 `features/signal/report.ts`（與提醒信同一份）。買賣紀錄 / 持股存 localStorage（`lib/trades.ts` + `lib/plan.ts`） |
+| `/plan`（操作計畫） | `features/planner/` | 完成：唯一的「明天要幹嘛」入口。訊號全部來自 `features/signal/report.ts`。買賣紀錄 / 持股存 localStorage（`lib/trades.ts` + `lib/plan.ts`） |
 | `/signal` | — | 已併入 `/plan`，`routes.tsx` 保留轉址 |
 | `/ranking` | `features/ranking/RankingPage.tsx` | 雛型；可加：切換排序因子、多因子綜合評分、分位數上色 |
 | `/stock/:code` | `features/stock/StockPage.tsx` | 雛型；可加：還原價走勢圖（`@visx/shape` LinePath + `loadFactorHistory`） |

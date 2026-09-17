@@ -1,9 +1,8 @@
-/** 操作計畫的設定（上線日 / 換股時點 / 策略連結 / 提醒信 JSON）—— 預設收合，不擋住結論。 */
-import { useMemo, useState } from 'react'
+/** 操作計畫的設定（上線日 / 換股時點 / 策略連結）—— 預設收合，不擋住結論。 */
 import { Link } from 'react-router-dom'
 
 import { tradingDayOrdinal } from '../../lib/calendar'
-import { toPlanJson, type PlanState } from '../../lib/plan'
+import type { PlanState } from '../../lib/plan'
 import { encodeParams } from '../backtest/strategyParams'
 import styles from './planner.module.css'
 
@@ -30,25 +29,13 @@ export function PlanSettings({
   seeded: boolean
 }) {
   const s = plan.strategy
-  const [copied, setCopied] = useState(false)
-  const planJson = useMemo(() => JSON.stringify(toPlanJson(plan), null, 2), [plan])
   const patch = (p: Partial<typeof s>) => setPlan({ ...plan, strategy: { ...s, ...p } })
-
-  const copy = () => {
-    navigator.clipboard.writeText(planJson).then(
-      () => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2500)
-      },
-      () => setCopied(false),
-    )
-  }
 
   const startOrdinal = tradingDayOrdinal(plan.startDate, holidays)
 
   return (
     <details className={styles.fold}>
-      <summary>⚙ 設定（上線日、換股時點、策略、提醒信）</summary>
+      <summary>⚙ 設定（上線日、換股時點、策略）</summary>
       <div className={`${styles.foldBody} ${styles.settingsGrid}`}>
         <div className={`${styles.group} ${styles.gTiming}`}>
           <label className={styles.field}>策略上線日</label>
@@ -123,29 +110,6 @@ export function PlanSettings({
           <p className={styles.hint}>
             這頁的所有訊號都照這組參數算；想換規則請在回測頁驗證過再帶回來。
           </p>
-        </div>
-
-        <div className={`${styles.group} ${styles.gExport}`}>
-          <label className={styles.field}>每晚提醒信</label>
-          <button className={styles.copyBtn} onClick={copy}>
-            {copied ? '✓ 已複製' : '複製設定 JSON'}
-          </button>
-          <ol className={styles.mailSteps}>
-            <li>
-              GitHub → 這個 repo → <b>Settings</b> → <b>Secrets and variables</b> → <b>Actions</b>
-            </li>
-            <li>
-              新增 / 更新 secret <code>OPERATOR_PLAN</code>，貼上剛剛複製的 JSON
-            </li>
-            <li>
-              另外設好 <code>MAIL_USERNAME</code>、<code>MAIL_PASSWORD</code>、<code>MAIL_TO</code>
-            </li>
-            <li>每個交易日 19:00（台北）寄出與這頁同一份結論</li>
-          </ol>
-          <details className={styles.raw}>
-            <summary>看 JSON</summary>
-            <pre>{planJson}</pre>
-          </details>
         </div>
       </div>
     </details>

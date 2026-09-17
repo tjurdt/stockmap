@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
+import { CustomIndicatorEditor } from '../../components/CustomIndicatorEditor'
 import { InfoHint } from '../../components/InfoHint'
 import { Layout } from '../../components/Layout'
 import { CycleField } from '../../components/controls/CycleField'
@@ -14,7 +15,7 @@ import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
 import { baselineStyle, strategyStyle } from '../../lib/palette'
-import { METRICS } from '../../lib/metrics'
+import { factorLabel, METRICS } from '../../lib/metrics'
 import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../../lib/rolling'
 import { CompareTable, type CompareRow } from './CompareTable'
 import { useLockedStrategies } from './compare'
@@ -40,7 +41,10 @@ const cls = (v: number) => (v > 0 ? styles.pos : v < 0 ? styles.neg : undefined)
 
 /** 目前策略固定第一色；鎖定的策略用 1..4。 */
 
-const FACTOR_OPTS = BACKTEST_FACTORS.map((k) => [k, METRICS[k].label] as const)
+const FACTOR_OPTS = [
+  ...BACKTEST_FACTORS.map((k) => [k, METRICS[k].label] as const),
+  ['custom', '🧩 自訂指標'] as const,
+]
 const WEEKDAY_OPTS = [
   [1, '週一'],
   [2, '週二'],
@@ -55,7 +59,7 @@ const WINDOW_OPTS = [
 ] as const
 
 function strategyLabel(p: StrategyParams): string {
-  return `${METRICS[p.factor].label.replace(/\s*\(.*\)/, '')}·前${p.topN}·${
+  return `${factorLabel(p).replace(/\s*\(.*\)/, '')}·前${p.topN}·${
     p.rebalance === 'M' ? '月' : '週'
   }${p.stopType !== 'none' ? `·停${p.stopPct}` : ''}${p.regime !== 'off' ? '·多空' : ''}`
 }
@@ -210,6 +214,9 @@ export function BacktestPage() {
     factor: c.factor,
     momDays: c.momDays ?? 0,
     momSkip: c.momSkip ?? 0,
+    customFormula: c.customFormula ?? '',
+    customLabel: c.customLabel ?? '',
+    customBetterWhen: c.customBetterWhen ?? 'high',
     topN: c.topN,
     poolTopN: c.poolTopN ?? 50,
     rebalance: c.rebalance,
@@ -372,6 +379,24 @@ export function BacktestPage() {
                 format={(v) => `${v} 交易日`}
               />
             )}
+          </SubGroup>
+        )}
+        {cfg.factor === 'custom' && (
+          <SubGroup>
+            <CustomIndicatorEditor
+              value={{
+                formula: cfg.customFormula ?? '',
+                label: cfg.customLabel ?? '',
+                betterWhen: cfg.customBetterWhen ?? 'high',
+              }}
+              onChange={(v) =>
+                patch({
+                  customFormula: v.formula,
+                  customLabel: v.label,
+                  customBetterWhen: v.betterWhen,
+                })
+              }
+            />
           </SubGroup>
         )}
         <StepperField

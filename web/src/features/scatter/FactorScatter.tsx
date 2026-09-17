@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import type { Stock } from '../../lib/data'
 import { formatOrNA, tickLabel } from '../../lib/format'
-import { METRICS, metricValue, type MetricKey } from '../../lib/metrics'
+import { factorFmt, factorLabel, metricValue, type MetricKey } from '../../lib/metrics'
 import { log10, median, niceTicks, padExtent } from '../../lib/scales'
 import styles from './scatter.module.css'
 
@@ -26,6 +26,13 @@ export interface ScatterOptions {
   logY: boolean
   sizeByMcap: boolean
   medianLines: boolean
+  /**
+   * 自訂指標（`xKey`/`yKey === 'custom'` 時用）。X、Y 軸共用同一組定義 —— 兩軸都選自訂指標
+   * 會顯示同一條公式的值，這是刻意的簡化（跟 `BacktestConfig.customFormula` 同一個設計）。
+   */
+  customFormula?: string
+  customLabel?: string
+  customBetterWhen?: 'high' | 'low'
 }
 
 interface Pt {
@@ -72,9 +79,15 @@ function pickLabels(pts: Placed[]): Set<string> {
 
 export function FactorScatter({ stocks, opts }: { stocks: Stock[]; opts: ScatterOptions }) {
   const [hover, setHover] = useState<{ pt: Pt; cx: number; cy: number } | null>(null)
-  const { xKey, yKey, logX, logY, sizeByMcap, medianLines } = opts
-  const mx = METRICS[xKey]
-  const my = METRICS[yKey]
+  const { xKey, yKey, logX, logY, sizeByMcap, medianLines, customLabel, customBetterWhen } = opts
+  const mx = {
+    label: factorLabel({ factor: xKey, customLabel, customBetterWhen }),
+    fmt: factorFmt(xKey),
+  }
+  const my = {
+    label: factorLabel({ factor: yKey, customLabel, customBetterWhen }),
+    fmt: factorFmt(yKey),
+  }
 
   const pts: Pt[] = stocks
     .map((d) => ({ d, x: metricValue(d, xKey), y: metricValue(d, yKey) }))

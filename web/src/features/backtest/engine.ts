@@ -9,7 +9,13 @@
 import type { BaselineRow } from '../../lib/baselines'
 import { isTradingDay, nextTradingDay, nthTradingDayOfMonth } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
-import { METRICS, type MetricKey } from '../../lib/metrics'
+import { parseFormula, evalFormula } from '../../lib/formula'
+import {
+  factorBetterWhen,
+  metricField,
+  type BuiltinMetricKey,
+  type MetricKey,
+} from '../../lib/metrics'
 import { momentumPct } from '../../lib/momentum'
 
 /** 動能數學的單一事實來源在 `lib/momentum.ts`；這裡轉出給既有呼叫端。 */
@@ -21,7 +27,7 @@ export type StopType = 'none' | 'fixed' | 'trailing' | 'daily' | 'ma'
 export type RegimeIndicator = 'off' | 'ma' | 'mom'
 
 /** 可當排名因子的欄位（history jsonl 有、且排名有意義的）。 */
-export const BACKTEST_FACTORS: MetricKey[] = ['m20', 'm60', 'm121', 'pe', 'pb', 'dy', 'mcap']
+export const BACKTEST_FACTORS: BuiltinMetricKey[] = ['m20', 'm60', 'm121', 'pe', 'pb', 'dy', 'mcap']
 
 export interface BacktestConfig {
   /** 選股池：每個再平衡日先取「當日市值前 poolTopN 大」；省略/0 = 全 universe */
@@ -34,6 +40,14 @@ export interface BacktestConfig {
   momDays?: number
   /** 自訂動能：跳過最近幾個交易日（0 = 不跳；學界 12-1 動能用 20）。 */
   momSkip?: number
+  /**
+   * 只在 `factor === 'custom'` 時生效：使用者自訂指標的運算式原文（`lib/formula.ts`），
+   * 依 adjClose 序列逐日重算。`customLabel`/`customBetterWhen` 只影響顯示 / 排序方向，
+   * 不影響數值本身。
+   */
+  customFormula?: string
+  customLabel?: string
+  customBetterWhen?: 'high' | 'low'
   topN: number
   rebalance: Rebalance
   /**
@@ -148,8 +162,7 @@ export interface BacktestResult {
 type HistStock = HistoryRow['stocks'][number]
 
 function histValue(hs: HistStock, key: MetricKey): number | null {
-  const f = METRICS[key].field
-  const v = (hs as Record<string, unknown>)[f]
+  const v = (hs as Record<string, unknown>)[metricField(key)]
   return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
@@ -168,7 +181,7 @@ export function withCustomMomentum(rows: HistoryRow[], cfg: BacktestConfig): His
   if (!isCustomMomentum(cfg)) return rows
   const lookback = Math.max(1, Math.round(cfg.momDays ?? 0))
   const skip = Math.max(0, Math.round(cfg.momSkip ?? 0))
-  const field = METRICS[cfg.factor].field
+  const field = metricField(cfg.factor)
   const series = new Map<string, number[]>()
   return rows.map((row) => ({
     ...row,
@@ -179,6 +192,43 @@ export function withCustomMomentum(rows: HistoryRow[], cfg: BacktestConfig): His
       return { ...s, [field]: momentumPct(arr, lookback, skip) }
     }),
   }))
+}
+
+export function isCustomFactor(cfg: Pick<BacktestConfig, 'factor' | 'customFormula'>): boolean {
+  return cfg.factor === 'custom' && !!cfg.customFormula && parseFormula(cfg.customFormula).ok
+}
+
+/**
+ * 回傳一份新的 rows，每檔多一個 `custom` 欄位（依 adjClose 序列算出的公式值）；
+ * 公式語法錯誤就原樣回傳。純函式，跟 `withCustomMomentum` 同一個逐股累積還原價序列的寫法。
+ * 只吃公式字串，不需要一整份 `BacktestConfig` —— 散佈圖只有一個公式、沒有其餘策略設定時
+ * 也能用（見 `ScatterPage.tsx`）。
+ */
+export function applyCustomFormula(rows: HistoryRow[], formula: string): HistoryRow[] {
+  const parsed = parseFormula(formula)
+  if (!parsed.ok) return rows
+  const series = new Map<string, number[]>()
+  return rows.map((row) => ({
+    ...row,
+    stocks: row.stocks.map((s) => {
+      const arr = series.get(s.code) ?? []
+      if (s.adjClose != null && s.adjClose > 0) arr.push(s.adjClose)
+      series.set(s.code, arr)
+      return { ...s, ['custom']: evalFormula(parsed.ast, arr) }
+    }),
+  }))
+}
+
+/**
+ * 若 `cfg.factor === 'custom'` 且公式合法，套用 `applyCustomFormula`；否則原樣回傳。
+ */
+export function withCustomFactor(rows: HistoryRow[], cfg: BacktestConfig): HistoryRow[] {
+  return isCustomFactor(cfg) ? applyCustomFormula(rows, cfg.customFormula!) : rows
+}
+
+/** `withCustomMomentum` + `withCustomFactor` 合在一起呼叫（兩者互斥，看 `cfg.factor`）。 */
+export function withComputedFactors(rows: HistoryRow[], cfg: BacktestConfig): HistoryRow[] {
+  return withCustomFactor(withCustomMomentum(rows, cfg), cfg)
 }
 
 function isoWeekKey(iso: string): string {
@@ -245,7 +295,7 @@ export function isRebalanceDay(
 }
 
 /**
- * 從 `fromISO` 之後、下一個再平衡日的日期（給「操作訊號 / 提醒信」顯示）。
+ * 從 `fromISO` 之後、下一個再平衡日的日期（給「操作計畫」頁顯示）。
  * 傳 `holidays` 就用真的台股交易日曆；否則只跳週末。
  */
 export function nextRebalanceDate(
@@ -285,7 +335,7 @@ export function rankTargets(
   cfg: BacktestConfig,
 ): { code: string; weight: number; factor: number; mcap: number | null }[] {
   const w = targetWeights(row, cfg)
-  const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
+  const dir = factorBetterWhen(cfg) === 'high' ? -1 : 1
   return [...w.keys()]
     .map((code) => {
       const s = row.stocks.find((x) => x.code === code)!
@@ -319,7 +369,7 @@ export function shouldSwap(
   if (!cfg.swapOnBetter) return false
   const margin = Math.max(0, (cfg.swapMargin ?? 15) / 100)
   const minHold = Math.max(0, Math.round(cfg.swapMinHoldDays ?? 10))
-  const dir = METRICS[cfg.factor].betterWhen === 'high' ? 1 : -1
+  const dir = factorBetterWhen(cfg) === 'high' ? 1 : -1
   const tset = new Set(targetCodes)
   const hset = new Set(heldCodes)
   const incumbents = heldCodes.filter((c) => !tset.has(c))
@@ -336,7 +386,7 @@ export function shouldSwap(
 }
 
 function targetWeights(row: HistoryRow, cfg: BacktestConfig): Map<string, number> {
-  const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
+  const dir = factorBetterWhen(cfg) === 'high' ? -1 : 1
   const inPool = new Set(poolCodes(row, cfg.poolTopN)) // 當日市值前 poolTopN 大
 
   const ranked = row.stocks
@@ -366,7 +416,7 @@ export function factorRanking(
   cfg: BacktestConfig,
   n: number,
 ): { code: string; factor: number }[] {
-  const dir = METRICS[cfg.factor].betterWhen === 'high' ? -1 : 1
+  const dir = factorBetterWhen(cfg) === 'high' ? -1 : 1
   const inPool = new Set(poolCodes(row, cfg.poolTopN))
   return row.stocks
     .filter((s) => inPool.has(s.code))
@@ -532,7 +582,7 @@ export function runBacktest(
   baselines: BaselineRow[] = [],
 ): BacktestResult {
   // 自訂動能要用完整序列算，再裁區間（不然區間起點的動能會少掉前面的價）
-  const rows = withCustomMomentum(history, cfg)
+  const rows = withComputedFactors(history, cfg)
     .filter(
       (r) => (!cfg.startDate || r.date >= cfg.startDate) && (!cfg.endDate || r.date <= cfg.endDate),
     )

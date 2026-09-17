@@ -1,3 +1,4 @@
+import { CustomIndicatorEditor } from '../../components/CustomIndicatorEditor'
 import { liveAvailable } from '../../lib/live'
 import { METRIC_KEYS, METRICS, type MetricKey } from '../../lib/metrics'
 import type { ScatterOptions } from './FactorScatter'
@@ -36,6 +37,7 @@ function MetricSelect({
             {METRICS[k].label}
           </option>
         ))}
+        <option value="custom">🧩 自訂指標</option>
       </select>
     </>
   )
@@ -100,6 +102,23 @@ export function Controls({
         value={opts.yKey}
         onChange={(v) => onChange({ yKey: v })}
       />
+
+      {(opts.xKey === 'custom' || opts.yKey === 'custom') && (
+        <CustomIndicatorEditor
+          value={{
+            formula: opts.customFormula ?? '',
+            label: opts.customLabel ?? '',
+            betterWhen: opts.customBetterWhen ?? 'high',
+          }}
+          onChange={(v) =>
+            onChange({
+              customFormula: v.formula,
+              customLabel: v.label,
+              customBetterWhen: v.betterWhen,
+            })
+          }
+        />
+      )}
 
       <label className={styles.field}>選項</label>
       <div className={styles.toggles}>
