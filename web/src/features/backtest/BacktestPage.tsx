@@ -202,9 +202,17 @@ export function BacktestPage() {
       .map((h) => dateIdx.get(h.tradeDate))
       .filter((i): i is number => i !== undefined)
     const active = [...result.holdings].reverse().find((h) => h.tradeDate && h.tradeDate <= date)
-    const held = new Set(active?.codes ?? [])
+    // 這天實際持有的代號（已反映停損 / 轉空清倉，不是排程換股當時決定的名單）
+    const heldList = result.dailyHoldings[idx] ?? []
+    const held = new Set(heldList)
+    // 這次換股決定的名單裡，已經停損 / 清倉出場、所以不在 heldList 的代號 —— 解釋兩者的落差
+    const exitedSinceRebalance = active
+      ? result.exitEvents.filter(
+          (e) => active.codes.includes(e.code) && e.date > active.tradeDate && e.date <= date,
+        )
+      : []
     const pool = poolAtDate(history, date, cfg.poolTopN)
-    return { date, markers, held, active, pool }
+    return { date, markers, held, heldList, active, exitedSinceRebalance, pool }
   }, [result, cursor, history, cfg.poolTopN])
 
   const poolShown = Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))
@@ -763,6 +771,42 @@ export function BacktestPage() {
                 )}
               </div>
 
+              <div className={styles.snapshot}>
+                <div>
+                  <h3>
+                    當時持股 <span className={styles.sub}>{view.date}</span>
+                  </h3>
+                  <div className={styles.snapCol}>
+                    <ol>
+                      {view.heldList.map((c) => (
+                        <li key={c}>
+                          <span>
+                            {c} {names.get(c) ?? (c === '00632R' ? '元大台灣50反1' : '')}
+                          </span>
+                        </li>
+                      ))}
+                      {view.exitedSinceRebalance.map((e) => (
+                        <li key={e.code} className={styles.sub}>
+                          <span>
+                            {e.code} {names.get(e.code) ?? ''} —{' '}
+                            {e.reason === 'stop' ? '已停損' : '轉空清倉'}（{e.date}）
+                          </span>
+                        </li>
+                      ))}
+                      {view.heldList.length === 0 && view.exitedSinceRebalance.length === 0 && (
+                        <li>（尚未進場）</li>
+                      )}
+                    </ol>
+                  </div>
+                  {view.active && (
+                    <p className={styles.sub} style={{ marginTop: 6 }}>
+                      訊號 {view.active.signalDate}
+                      {view.active.tradeDate ? ` · 成交 ${view.active.tradeDate}` : ' · 尚未成交'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
               {compareRows.length > 0 && <CompareTable rows={compareRows} />}
 
               {rolling.length > 1 && (
@@ -894,29 +938,6 @@ export function BacktestPage() {
               )}
 
               <div className={styles.snapshot}>
-                <div>
-                  <h3>
-                    當時持股 <span className={styles.sub}>{view.date}</span>
-                  </h3>
-                  <div className={styles.snapCol}>
-                    <ol>
-                      {(view.active?.codes ?? []).map((c) => (
-                        <li key={c}>
-                          <span>
-                            {c} {names.get(c) ?? (c === '00632R' ? '元大台灣50反1' : '')}
-                          </span>
-                        </li>
-                      ))}
-                      {!view.active && <li>（尚未進場）</li>}
-                    </ol>
-                  </div>
-                  {view.active && (
-                    <p className={styles.sub} style={{ marginTop: 6 }}>
-                      訊號 {view.active.signalDate}
-                      {view.active.tradeDate ? ` · 成交 ${view.active.tradeDate}` : ' · 尚未成交'}
-                    </p>
-                  )}
-                </div>
                 <div>
                   <h3>
                     當時市值前 {poolShown} <span className={styles.sub}>持股標藍</span>

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 
 import { Layout } from '../../components/Layout'
+import { useCustomFactorStocks } from '../../hooks/useCustomFactorStocks'
 import { useLiveSnapshot } from '../../hooks/useLiveSnapshot'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { applyCustomFormula } from '../backtest/engine'
 import { Controls } from './Controls'
 import { FactorScatter, type ScatterOptions } from './FactorScatter'
 import { QuotePanel } from './QuotePanel'
@@ -31,20 +31,11 @@ export function ScatterPage() {
 
   // X/Y 軸有任一是自訂指標時，用最新的歷史序列（含暫定當日列）補算成 `custom` 欄位
   const needsCustom = opts.xKey === 'custom' || opts.yKey === 'custom'
-  const customByCode = useMemo(() => {
-    if (!needsCustom || !opts.customFormula) return null
-    const last = applyCustomFormula(market.rows, opts.customFormula).at(-1)
-    if (!last) return null
-    return new Map(
-      last.stocks.map((s) => [s.code, (s as { custom?: number | null }).custom ?? null]),
-    )
-  }, [needsCustom, opts.customFormula, market.rows])
-  const stocksWithCustom = useMemo(
-    () =>
-      customByCode
-        ? allStocks.map((s) => ({ ...s, custom: customByCode.get(s.code) ?? null }))
-        : allStocks,
-    [allStocks, customByCode],
+  const stocksWithCustom = useCustomFactorStocks(
+    allStocks,
+    market.rows,
+    needsCustom,
+    opts.customFormula,
   )
 
   const limit = showN ?? (state.status === 'ready' ? (state.data.universeDisplayCount ?? 20) : 20)

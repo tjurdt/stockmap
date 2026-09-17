@@ -153,6 +153,13 @@ export interface RebalanceEvent {
   codes: string[]
 }
 
+/** 停損 / 轉空清倉造成的個股出場（不是排程換股 —— 那些記在 `holdings` 裡）。 */
+export interface ExitEvent {
+  date: string
+  code: string
+  reason: 'stop' | 'bear-exit'
+}
+
 export interface BacktestResult {
   dates: string[]
   equity: number[]
@@ -161,6 +168,13 @@ export interface BacktestResult {
   /** 每日多空環境（regime = off 時全 'bull'） */
   regime: ('bull' | 'bear')[]
   holdings: RebalanceEvent[]
+  /**
+   * 每日實際持有的代號（index 對齊 dates；不含反 1），已經反映停損 / 轉空清倉 ——
+   * 跟 `holdings`（排程換股事件的日誌）不同，這是「這天收盤後手上真的有什麼」。
+   */
+  dailyHoldings: string[][]
+  /** 停損 / 轉空清倉事件日誌，給「當時持股」這類畫面解釋「為什麼這檔不在清單裡」。 */
+  exitEvents: ExitEvent[]
   metrics: BacktestMetrics
 }
 
@@ -612,6 +626,8 @@ export function runBacktest(
   const benchmark: number[] = []
   const regime: ('bull' | 'bear')[] = []
   const holdings: BacktestResult['holdings'] = []
+  const dailyHoldings: string[][] = []
+  const exitEvents: ExitEvent[] = []
   const dailyEq: number[] = []
 
   const regimeMap = regimeByDate(
@@ -708,6 +724,7 @@ export function runBacktest(
             weights.set(c, 0)
             entry.delete(c)
             stops++
+            exitEvents.push({ date: row.date, code: c, reason: 'stop' })
           }
         }
         pendingStops.clear()
@@ -742,6 +759,7 @@ export function runBacktest(
             weights.set(c, 0)
             entry.delete(c)
             stops++
+            exitEvents.push({ date: row.date, code: c, reason: 'stop' })
           }
         }
       }
@@ -749,7 +767,12 @@ export function runBacktest(
       // immediate：一轉空頭當天清掉股票部位（→ 現金或反 1）
       if (immediateExit && regimeMap.get(row.date) === 'bear') {
         let stockW = 0
-        for (const [c, w] of weights) if (c !== INVERSE_CODE) stockW += w
+        const stockCodes: string[] = []
+        for (const [c, w] of weights)
+          if (c !== INVERSE_CODE && w > 1e-9) {
+            stockW += w
+            stockCodes.push(c)
+          }
         const inInverse = (weights.get(INVERSE_CODE) ?? 0) > 1e-9
         const wantInverse = bearInverse && invRet.has(row.date)
         if (stockW > 1e-9) {
@@ -757,6 +780,8 @@ export function runBacktest(
           weights = new Map()
           entry.clear()
           if (pending && pending.target.size > 0) pending = null // 取消尚未成交的進場
+          for (const c of stockCodes)
+            exitEvents.push({ date: row.date, code: c, reason: 'bear-exit' })
         }
         if (wantInverse && !inInverse && weights.size === 0) {
           eq *= 1 - buyFrac // 買進反 1 成本
@@ -819,6 +844,9 @@ export function runBacktest(
     equity.push(eq)
     benchmark.push(bench)
     regime.push(regimeMap.get(row.date) ?? 'bull')
+    dailyHoldings.push(
+      [...weights].filter(([c, w]) => c !== INVERSE_CODE && w > 1e-6).map(([c]) => c),
+    )
   }
 
   // 回測結束時還沒成交的最新排名 → 當成「下次要換成的持股」顯示
@@ -850,6 +878,8 @@ export function runBacktest(
     drawdown,
     regime,
     holdings,
+    dailyHoldings,
+    exitEvents,
     metrics: {
       totalReturn: eq - 1,
       benchmarkReturn: bench - 1,

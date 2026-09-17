@@ -25,6 +25,12 @@
   font-size: 12px;
   color: var(--ink-2);
 }
+.formulaHelp {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 100%;
+}
 .toggle {
   flex: 1;
   display: flex;
