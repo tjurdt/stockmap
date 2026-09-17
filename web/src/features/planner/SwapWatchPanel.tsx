@@ -3,7 +3,8 @@
  *
  * 兩道閘同時滿足才會換（`engine.shouldSwap`）：
  *   1. 最短持有天數 —— 要被換掉的持股都得先抱滿 N 個交易日。
- *   2. 因子門檻 —— 挑戰者要比手上最弱一檔好過 margin%。
+ *   2. 因子門檻 —— 挑戰者要比手上最弱一檔好過 margin（相對百分比或因子原始單位，見
+ *      `engine.swapThreshold`）。
  * 這兩道只管「非排程日的臨時換股」；排程換股日一到照樣整批換（優先序見 report.ts 檔頭）。
  */
 import { InfoHint } from '../../components/InfoHint'
@@ -14,6 +15,8 @@ import styles from './planner.module.css'
 export function SwapWatchPanel({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
   const w = report.swapWatch
   const fmt = factorFmt(factor)
+  // relative：門檻是最弱持股因子值的 margin%；absolute：門檻是因子原始單位的差值
+  const marginText = w.marginMode === 'absolute' ? fmt(w.margin) : `${w.margin}%`
 
   if (!w.enabled) {
     return (
@@ -41,13 +44,13 @@ export function SwapWatchPanel({ report, factor }: { report: OperatorReport; fac
           <ul>
             <li>
               <b>兩道關卡都過</b>才會臨時換股：①手上那檔已抱滿最短持有 {w.minHoldDays}{' '}
-              個交易日；②有未持有的股票{report.factorLabel}比它高出 {w.marginPct}% 以上。
+              個交易日；②有未持有的股票{report.factorLabel}比它高出 {marginText} 以上。
             </li>
             <li>
               條件在某天收盤成立 → <b>隔一個交易日</b>成交（收盤後才知道排名，下一盤才進得去）。
             </li>
             <li>
-              「已贏最弱持股」是目前的領先幅度，「距門檻」是還差多少才達到 {w.marginPct}% 的要求。
+              「已贏最弱持股」是目前的領先幅度，「距門檻」是還差多少才達到 {marginText} 的要求。
             </li>
           </ul>
         </InfoHint>
@@ -94,7 +97,7 @@ export function SwapWatchPanel({ report, factor }: { report: OperatorReport; fac
             {w.thresholdFactor == null ? '—' : fmt(w.thresholdFactor)}
           </p>
           <p className={styles.factNote}>
-            {w.thresholdFactor == null ? '—' : `＝最弱持股再高出 ${w.marginPct}%`}
+            {w.thresholdFactor == null ? '—' : `＝最弱持股再高出 ${marginText}`}
           </p>
         </div>
         <div className={`${styles.watchBox} ${styles.watchWhen}`}>

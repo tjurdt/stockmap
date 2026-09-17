@@ -53,6 +53,18 @@ describe('parseFormula', () => {
     expect(run('1/(avg(0)+max(0))', series)).toBeCloseTo(1 / (100 + 100))
   })
 
+  it('chg(n)：today 對 n 天前的漲跌幅 (%)，比手寫 (price(0)-price(n))/price(n)*100 精簡', () => {
+    expect(run('chg(0)', series)).toBe(0)
+    expect(run('chg(1)', series)).toBeCloseTo(((100 - 90) / 90) * 100)
+    expect(run('chg(9)', series)).toBeCloseTo(((100 - 10) / 10) * 100)
+    expect(run('chg(1)', series)).toBeCloseTo(run('(price(0)-price(1))/price(1)*100', series)!)
+  })
+
+  it('chg 不支援 range、offset 超出範圍回 null', () => {
+    expect(parseFormula('chg(1:2)').ok).toBe(false)
+    expect(run('chg(20)', series)).toBeNull()
+  })
+
   it('offset 超出資料長度回 null', () => {
     expect(run('price(20)', series)).toBeNull()
     expect(run('avg(0:20)', series)).toBeNull()

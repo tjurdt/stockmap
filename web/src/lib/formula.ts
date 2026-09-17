@@ -1,17 +1,20 @@
 /**
  * 自訂指標運算式 —— 純函式，不用 `eval`/`Function()`（使用者輸入，安全起見自己寫 parser）。
  *
- * 語法：`+ - * / ^ ()` 四則運算 + `avg`/`max`/`min`/`price`。
+ * 語法：`+ - * / ^ ()` 四則運算 + `avg`/`max`/`min`/`price`/`chg`。
  *   avg(n)   ≡ avg(0:n)：offset 0（今天）到 offset n（n 個交易日前）共 n+1 天的平均
  *   avg(a:b)：offset a..b（含）的平均，a、b 順序不拘；max/min 同理
  *   price(n)：offset n 那天的還原價（單點，不支援 range）
+ *   chg(n)：today 對 offset n 那天的漲跌幅 (%) = (price(0)-price(n))/price(n)*100（單點，
+ *     不支援 range）——比自己寫 `(price(0)-price(n))/price(n)*100` 精簡，常見的「n 日報酬率」
+ *     寫法。
  *
  * 對齊 `momentum.ts` 的序列慣例：series 由舊到新，最後一個是今天；
  * series[series.length-1-k] = k 個交易日前。資料不夠長、或算出非有限數（例如除以零）一律回
  * null —— 跟 `metricValue`/`histValue` 的 `Number.isFinite` 慣例一致，讓排名邏輯自然濾掉。
  */
 
-export type FormulaFn = 'avg' | 'max' | 'min' | 'price'
+export type FormulaFn = 'avg' | 'max' | 'min' | 'price' | 'chg'
 
 export type FormulaNode =
   | { type: 'num'; value: number }
@@ -21,7 +24,9 @@ export type FormulaNode =
 
 export type ParseResult = { ok: true; ast: FormulaNode } | { ok: false; error: string }
 
-const FUNCS = new Set<string>(['avg', 'max', 'min', 'price'])
+const FUNCS = new Set<string>(['avg', 'max', 'min', 'price', 'chg'])
+/** 只吃單一天數、不支援「a:b」區間的函式。 */
+const SINGLE_ARG_FUNCS = new Set<string>(['price', 'chg'])
 
 type Token =
   | { kind: 'num'; value: number }
@@ -169,7 +174,7 @@ class Parser {
     }
     if (t.kind === 'ident') {
       const name = t.value.toLowerCase()
-      if (!FUNCS.has(name)) return `不認識的函式：「${t.value}」（只支援 avg/max/min/price）`
+      if (!FUNCS.has(name)) return `不認識的函式：「${t.value}」（只支援 avg/max/min/price/chg）`
       this.next()
       const openErr = this.expectOp('(')
       if (openErr) return openErr
@@ -179,15 +184,15 @@ class Parser {
       let to: number
       const maybeColon = this.peek()
       if (maybeColon.kind === 'op' && maybeColon.value === ':') {
-        if (name === 'price') return 'price(n) 只吃單一天數，不支援「a:b」區間'
+        if (SINGLE_ARG_FUNCS.has(name)) return `${name}(n) 只吃單一天數，不支援「a:b」區間`
         this.next()
         const toVal = this.parseInt()
         if (typeof toVal === 'string') return toVal
         from = firstNum
         to = toVal
       } else {
-        // avg(n)/max(n)/min(n) ≡ 0:n（今天到 n 天前）；price(n) 是單點 n
-        from = name === 'price' ? firstNum : 0
+        // avg(n)/max(n)/min(n) ≡ 0:n（今天到 n 天前）；price(n)/chg(n) 是單點 n
+        from = SINGLE_ARG_FUNCS.has(name) ? firstNum : 0
         to = firstNum
       }
       const closeErr = this.expectOp(')')
@@ -244,6 +249,13 @@ export function evalFormula(ast: FormulaNode, series: number[]): number | null {
     case 'num':
       return finite(ast.value)
     case 'call': {
+      if (ast.fn === 'chg') {
+        // ast.from === ast.to === n（單點，見 parser）
+        const base = at(series, ast.from)
+        const today = at(series, 0)
+        if (base == null || today == null || base === 0) return null
+        return finite(((today - base) / base) * 100)
+      }
       const vals = windowValues(series, ast.from, ast.to)
       if (vals == null) return null
       if (ast.fn === 'price') return finite(vals[0]!)

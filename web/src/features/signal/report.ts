@@ -14,7 +14,7 @@
 import type { BaselineRow } from '../../lib/baselines'
 import { addTradingDays, nextTradingDay, tradingDaysBetween } from '../../lib/calendar'
 import type { HistoryRow } from '../../lib/history'
-import { factorBetterWhen, factorLabel, metricField } from '../../lib/metrics'
+import { factorBetterWhen, factorFmt, factorLabel, metricField } from '../../lib/metrics'
 import type { OperatorPlan } from '../../lib/plan'
 import {
   factorRanking,
@@ -23,6 +23,7 @@ import {
   rankTargets,
   regimeByDate,
   shouldSwap,
+  swapThreshold,
   withComputedFactors,
   type BacktestConfig,
 } from '../backtest/engine'
@@ -115,8 +116,10 @@ export interface SwapChallenger {
 export interface SwapWatch {
   /** 策略有開動能換股 */
   enabled: boolean
-  /** 門檻：挑戰者要比最弱持股好過這個比例（%） */
-  marginPct: number
+  /** 門檻：挑戰者要比最弱持股好過這個量，意義由 marginMode 決定 */
+  margin: number
+  /** relative：margin 是「最弱持股因子值的 margin%」；absolute：margin 就是因子原始單位的差值 */
+  marginMode: 'relative' | 'absolute'
   minHoldDays: number
   /** 會被換掉的那檔（已掉出目標名單的持股裡因子最差的） */
   weakest: { code: string; name: string; factor: number } | null
@@ -227,8 +230,12 @@ function strategySummary(plan: OperatorPlan, factorLabelText: string): string {
     parts.push(s.stopExecNext ? `${label}（隔日出場）` : label)
   }
   if (s.swapOnBetter) {
+    const marginText =
+      (s.swapMarginMode ?? 'relative') === 'absolute'
+        ? `高出 ${factorFmt(s.factor)(s.swapMargin)}`
+        : `高出 ${s.swapMargin}%`
     parts.push(
-      `動能換股（高出 ${s.swapMargin}%、最短持有 ${s.swapMinHoldDays} 交易日、${
+      `動能換股（${marginText}、最短持有 ${s.swapMinHoldDays} 交易日、${
         s.swapExecNext ? '隔日成交' : '訊號日成交'
       }）`,
     )
@@ -480,17 +487,14 @@ export function buildOperatorReport(
 
   // ── 動能換股監看：誰會被換掉、挑戰者要贏多少、最快哪天換得動 ──────────────
   const dir = factorBetterWhen(cfg) === 'high' ? 1 : -1
-  const margin = Math.max(0, (plan.strategy.swapMargin ?? 0) / 100)
   const outgoing = holdings.filter(
     (h): h is HoldingRow & { factor: number } => !h.inTargets && h.factor != null,
   )
   const worst = outgoing.length
     ? outgoing.reduce((a, b) => (dir * (a.factor - b.factor) < 0 ? a : b))
     : null
-  // shouldSwap 的門檻：dir*(挑戰者 − 最弱持股) >= |最弱持股| × margin
-  const thresholdFactor = worst
-    ? worst.factor + dir * Math.max(1e-12, Math.abs(worst.factor) * margin)
-    : null
+  // 跟 engine.shouldSwap 共用同一個門檻算法，避免兩處漂移
+  const thresholdFactor = worst ? swapThreshold(worst.factor, dir, plan.strategy) : null
   const challengers: SwapChallenger[] =
     worst && thresholdFactor != null
       ? targets
@@ -516,7 +520,8 @@ export function buildOperatorReport(
     : null
   const swapWatch: SwapWatch = {
     enabled: plan.strategy.swapOnBetter === true,
-    marginPct: plan.strategy.swapMargin ?? 0,
+    margin: Math.max(0, plan.strategy.swapMargin ?? 0),
+    marginMode: plan.strategy.swapMarginMode ?? 'relative',
     minHoldDays,
     weakest: worst ? { code: worst.code, name: worst.name, factor: worst.factor } : null,
     thresholdFactor,

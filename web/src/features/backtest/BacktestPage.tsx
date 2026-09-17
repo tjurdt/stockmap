@@ -15,7 +15,7 @@ import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
 import { baselineStyle, strategyStyle } from '../../lib/palette'
-import { factorLabel, METRICS } from '../../lib/metrics'
+import { factorFmt, factorLabel, METRICS } from '../../lib/metrics'
 import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../../lib/rolling'
 import { CompareTable, type CompareRow } from './CompareTable'
 import { useLockedStrategies } from './compare'
@@ -229,6 +229,7 @@ export function BacktestPage() {
     stopExecNext: c.stopExecNext ?? false,
     swapOnBetter: c.swapOnBetter ?? false,
     swapMargin: c.swapMargin ?? 15,
+    swapMarginMode: c.swapMarginMode ?? 'relative',
     swapMinHoldDays: c.swapMinHoldDays ?? 10,
     swapExecNext: c.swapExecNext ?? true,
     regime: c.regime ?? 'off',
@@ -465,15 +466,36 @@ export function BacktestPage() {
         />
         {cfg.swapOnBetter && (
           <SubGroup>
+            <CycleField
+              label="門檻類型"
+              value={cfg.swapMarginMode ?? 'relative'}
+              options={[
+                ['relative', '相對 %'],
+                ['absolute', '絕對值'],
+              ]}
+              onChange={(v) => patch({ swapMarginMode: v })}
+            />
             <StepperField
               label="換股門檻"
               value={cfg.swapMargin ?? 15}
               min={0}
-              max={50}
-              step={5}
+              max={(cfg.swapMarginMode ?? 'relative') === 'absolute' ? 9999 : 50}
+              step={(cfg.swapMarginMode ?? 'relative') === 'absolute' ? 1 : 5}
               onChange={(v) => patch({ swapMargin: v })}
-              format={(v) => `高出 ${v}%`}
+              format={(v) =>
+                (cfg.swapMarginMode ?? 'relative') === 'absolute'
+                  ? `高出 ${factorFmt(cfg.factor)(v)}`
+                  : `高出 ${v}%`
+              }
             />
+            <p className={styles.sub} style={{ margin: '4px 2px 0' }}>
+              門檻類型是什麼
+              <InfoHint label="門檻類型是什麼">
+                「相對 %」＝比最弱持股的因子值再高 X%（因子接近 0 時門檻會塌縮成幾乎不用贏， 適合
+                PE/PB 這種比例型因子）。「絕對值」＝直接高出 X（因子原始單位，適合已經是 %
+                的動能因子，或自訂指標——單位不是比例、或值接近 0 時用這個比較準）。
+              </InfoHint>
+            </p>
             <StepperField
               label="最短持有"
               value={cfg.swapMinHoldDays ?? 10}
