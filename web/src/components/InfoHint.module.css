@@ -47,6 +47,11 @@
   font-weight: 400;
   line-height: 1.85;
   white-space: normal;
+  /* 長 code 片段（公式範例）沒有空白可斷行，窄螢幕會被 .row 的 overflow:hidden 切掉 ——
+     這裡強制可以在任意字元斷行，不留給外層決定。 */
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 /* 注意：`.panel` 自己宣告了 display，會蓋掉瀏覽器預設的 `[hidden] { display: none }` ——
    一定要自己補這條（且排在 .panel 之後），否則收合完全失效、面板永遠開著。 */

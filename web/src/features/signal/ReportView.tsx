@@ -217,9 +217,15 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                       return (
                         <td
                           key={h.code}
-                          className={d == null ? undefined : d >= 0 ? styles.pos : styles.neg}
+                          className={d == null ? undefined : d.abs >= 0 ? styles.pos : styles.neg}
                         >
-                          {d == null ? '—' : `${d >= 0 ? '+' : ''}${fmt(d)}`}
+                          {d == null
+                            ? '—'
+                            : `${d.abs >= 0 ? '+' : ''}${fmt(d.abs)}${
+                                d.pct == null
+                                  ? ''
+                                  : `（${d.pct >= 0 ? '+' : ''}${d.pct.toFixed(1)}%）`
+                              }`}
                         </td>
                       )
                     })}

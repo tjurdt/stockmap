@@ -136,8 +136,9 @@ describe('buildOperatorReport', () => {
     expect(r.factorBoard[0]!.rank).toBe(1)
     expect(r.factorBoard[0]!.code).toBe('1111') // 動能最高
     const board1111 = r.factorBoard.find((b) => b.code === '1111')!
-    // 1111 動能 50、2222 動能 10 → 差 +40
-    expect(board1111.deltaVsHolding['2222']).toBeCloseTo(40)
+    // 1111 動能 50、2222 動能 10 → 差 +40（相對 2222 因子值 10 → +400%）
+    expect(board1111.deltaVsHolding['2222']!.abs).toBeCloseTo(40)
+    expect(board1111.deltaVsHolding['2222']!.pct).toBeCloseTo(400)
     expect(r.factorBoard.find((b) => b.code === '2222')?.held).toBe(true)
     expect(r.holdings[0]!.factor).toBe(10)
     expect(r.holdings[0]!.factorRank).toBe(2) // 1111 > 2222 > 3333

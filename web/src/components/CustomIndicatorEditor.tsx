@@ -69,30 +69,7 @@ export function CustomIndicatorEditor({
         />
       </div>
       <div className={controlStyles.row}>
-        <span className={controlStyles.label}>
-          公式
-          <InfoHint label="公式語法">
-            <p>
-              <code>avg(n)</code> ／ <code>max(n)</code> ／ <code>min(n)</code>：今天到 n
-              個交易日前（含）的平均／最大／最小值，例如 <code>avg(20)</code>。
-            </p>
-            <p>
-              <code>avg(a:b)</code>：a 到 b 個交易日前（含）的平均，a、b 順序不拘，
-              <code>max</code>／<code>min</code> 同理，例如 <code>avg(9:15)</code>。
-            </p>
-            <p>
-              <code>price(n)</code>：n 個交易日前的股價，例如 <code>price(0)</code> 是今天。
-            </p>
-            <p>
-              <code>chg(n)</code>：今天對 n 個交易日前的漲跌幅 (%)，等於{' '}
-              <code>(price(0)-price(n))/price(n)*100</code> 但精簡很多，例如 <code>chg(20)</code>。
-            </p>
-            <p>
-              運算子：<code>+ − × / ^</code> 與括號，例如 <code>2*avg(5)/6</code> 或{' '}
-              <code>1/(avg(4)+max(8))</code>。
-            </p>
-          </InfoHint>
-        </span>
+        <span className={controlStyles.label}>公式</span>
         <input
           className={styles.input}
           value={value.formula}
@@ -103,6 +80,37 @@ export function CustomIndicatorEditor({
       {!parsed.ok && value.formula.trim() !== '' && (
         <p className={styles.error}>⚠ {parsed.error}</p>
       )}
+      {/*
+        InfoHint 故意放在 .row 外面，不當 .label 的子元素。
+        .label 是 flex item（flex-shrink:0），展開的說明面板一放進去，面板的 max-content
+        寬度會變成 .label 這個 flex item 的「內容基準寬度」，把整個 item 撐到七百多 px——
+        跟 .row 的可用寬度（幾百 px）完全脫鉤，overflow:hidden 只能把多出來的部分切掉，
+        不會讓它換行。放在 .row 外面、回到普通 block flow，才會乖乖用容器寬度、正常換行。
+      */}
+      <div className={styles.formulaHelp}>
+        公式語法
+        <InfoHint label="公式語法">
+          <p>
+            <code>avg(n)</code> ／ <code>max(n)</code> ／ <code>min(n)</code>：今天到 n
+            個交易日前（含）的平均／最大／最小值，例如 <code>avg(20)</code>。
+          </p>
+          <p>
+            <code>avg(a:b)</code>：a 到 b 個交易日前（含）的平均，a、b 順序不拘，
+            <code>max</code>／<code>min</code> 同理，例如 <code>avg(9:15)</code>。
+          </p>
+          <p>
+            <code>price(n)</code>：n 個交易日前的股價，例如 <code>price(0)</code> 是今天。
+          </p>
+          <p>
+            <code>chg(n)</code>：今天對 n 個交易日前的漲跌幅 (%)，等於{' '}
+            <code>(price(0)-price(n))/price(n)*100</code> 但精簡很多，例如 <code>chg(20)</code>。
+          </p>
+          <p>
+            運算子：<code>+ − × / ^</code> 與括號，例如 <code>2*avg(5)/6</code> 或{' '}
+            <code>1/(avg(4)+max(8))</code>。
+          </p>
+        </InfoHint>
+      </div>
       <div className={controlStyles.row}>
         <span className={controlStyles.label}>方向</span>
         <div className={styles.toggle}>

@@ -267,6 +267,11 @@ describe('runBacktest', () => {
     expect(r.metrics.stops).toBe(1)
     // 120 * 0.9 = 108 → 第一個 <= 108 是 105（index 7）→ 停在 105/100 - 1 = +5%
     expect(r.metrics.totalReturn).toBeCloseTo(0.05, 2)
+    // dailyHoldings 要反映停損後的真實狀態，不能還掛著已經出場的代號
+    expect(r.dailyHoldings[6]).toEqual(['1111']) // 觸發前一天還持有
+    expect(r.dailyHoldings[7]).toEqual([]) // 觸發當天（收盤價 <= 108）已出場
+    expect(r.dailyHoldings.at(-1)).toEqual([])
+    expect(r.exitEvents).toEqual([{ date: '2026-05-08', code: '1111', reason: 'stop' }])
   })
 
   it('regimeByDate: 均線之上 = bull、之下 = bear', () => {

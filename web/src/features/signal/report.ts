@@ -86,8 +86,15 @@ export interface FactorBoardRow {
   name: string
   factor: number
   held: boolean
-  /** 持股 code → 「這檔因子 − 該持股因子」（同單位差值；動能為百分點） */
-  deltaVsHolding: Record<string, number>
+  /** 持股 code → 這檔因子相對該持股因子的差 */
+  deltaVsHolding: Record<string, FactorDelta>
+}
+
+export interface FactorDelta {
+  /** 「這檔因子 − 該持股因子」（同單位差值；動能為百分點） */
+  abs: number
+  /** 相對百分比：abs ÷ |該持股因子|（該持股因子為 0 時 = null） */
+  pct: number | null
 }
 
 export interface ActionRow {
@@ -373,8 +380,11 @@ export function buildOperatorReport(
     .filter((c) => factorByCode.has(c) && rankOf.has(c))
     .map((code) => {
       const factor = factorByCode.get(code)!
-      const deltaVsHolding: Record<string, number> = {}
-      for (const [hc, hf] of heldFactors) deltaVsHolding[hc] = factor - hf
+      const deltaVsHolding: Record<string, FactorDelta> = {}
+      for (const [hc, hf] of heldFactors) {
+        const abs = factor - hf
+        deltaVsHolding[hc] = { abs, pct: hf !== 0 ? (abs / Math.abs(hf)) * 100 : null }
+      }
       return {
         rank: rankOf.get(code)!,
         code,
