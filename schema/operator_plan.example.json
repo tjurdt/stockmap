@@ -20,6 +20,7 @@
     "stopExecNext": false,
     "swapOnBetter": false,
     "swapMargin": 15,
+    "swapMarginMode": "relative",
     "swapMinHoldDays": 10,
     "swapExecNext": true,
     "regime": "ma",

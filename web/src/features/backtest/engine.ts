@@ -89,11 +89,16 @@ export interface BacktestConfig {
   stopExecNext?: boolean
   /**
    * 動能換股：非排程換股日也監看排名，一有池內未持有的股票因子明顯優於手上最弱一檔就換。
-   * swapMargin：挑戰者的因子值需比最弱持股「好」超過此 %（相對值）。
+   * swapMargin：挑戰者的因子值需比最弱持股「好」超過這個門檻，門檻的意義由 swapMarginMode 決定。
+   * swapMarginMode：'relative'（預設）＝最弱持股因子值的 swapMargin%（相對值，適合 PE/PB 這種
+   *   比例型因子）；'absolute'＝直接高出 swapMargin（因子原始單位，適合已經是 % 的動能因子、
+   *   或單位不是比例的自訂指標——因子值接近 0 時 relative 模式的門檻會塌縮成幾乎 0，絕對值模式
+   *   才有意義）。
    * swapMinHoldDays：每檔進場後至少持有 N 個交易日才可被換掉（防抖）。
    */
   swapOnBetter?: boolean
   swapMargin?: number
+  swapMarginMode?: 'relative' | 'absolute'
   swapMinHoldDays?: number
   /** 動能換股成交時點。true（預設）= 隔一交易日收盤；false = 訊號日收盤。 */
   swapExecNext?: boolean
@@ -350,6 +355,20 @@ export function rankTargets(
 }
 
 /**
+ * 動能換股的門檻值（純函式，`shouldSwap` 與操作訊號頁的 `swapWatch` 顯示共用，避免兩處各自
+ * 算一次、算法漂移）。`worstValue` 是目前最弱持股的因子值，`dir` 是 1（越高越好）或 -1（越低越好）。
+ */
+export function swapThreshold(
+  worstValue: number,
+  dir: 1 | -1,
+  cfg: Pick<BacktestConfig, 'swapMargin' | 'swapMarginMode'>,
+): number {
+  const margin = Math.max(0, cfg.swapMargin ?? 15)
+  if ((cfg.swapMarginMode ?? 'relative') === 'absolute') return worstValue + dir * margin
+  return worstValue + dir * Math.max(1e-12, Math.abs(worstValue) * (margin / 100))
+}
+
+/**
  * 動能換股決策（純函式，回測引擎與操作訊號共用）。
  * 當日 target 排名內有「未持有、且因子明顯優於手上最弱一檔」的挑戰者，
  * 且所有要被換掉的持股都已過最短持有天數 → 回 true。
@@ -367,7 +386,6 @@ export function shouldSwap(
   heldDays: (code: string) => number,
 ): boolean {
   if (!cfg.swapOnBetter) return false
-  const margin = Math.max(0, (cfg.swapMargin ?? 15) / 100)
   const minHold = Math.max(0, Math.round(cfg.swapMinHoldDays ?? 10))
   const dir = factorBetterWhen(cfg) === 'high' ? 1 : -1
   const tset = new Set(targetCodes)
@@ -379,9 +397,10 @@ export function shouldSwap(
   const incVals = incumbents.map(factorOf).filter((v): v is number => v != null)
   if (!incVals.length) return false
   const worstInc = incVals.reduce((a, b) => (dir * (a - b) < 0 ? a : b))
+  const threshold = swapThreshold(worstInc, dir, cfg)
   return challengers.some((c) => {
     const cv = factorOf(c)
-    return cv != null && dir * (cv - worstInc) >= Math.max(1e-12, Math.abs(worstInc) * margin)
+    return cv != null && dir * (cv - threshold) >= 0
   })
 }
 

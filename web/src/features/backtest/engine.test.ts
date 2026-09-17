@@ -9,6 +9,7 @@ import {
   rebalanceDates,
   regimeByDate,
   runBacktest,
+  swapThreshold,
   withCustomMomentum,
 } from './engine'
 
@@ -359,6 +360,26 @@ describe('runBacktest', () => {
     expect(inv.metrics.totalReturn).toBeGreaterThan(cash.metrics.totalReturn)
   })
 
+  describe('swapThreshold', () => {
+    it('relative（預設）：門檻是最弱持股因子值的 margin%', () => {
+      expect(swapThreshold(20, 1, { swapMargin: 15 })).toBeCloseTo(23)
+      expect(swapThreshold(20, -1, { swapMargin: 15 })).toBeCloseTo(17)
+      expect(swapThreshold(20, 1, { swapMargin: 15, swapMarginMode: 'relative' })).toBeCloseTo(23)
+    })
+
+    it('absolute：門檻是因子原始單位的差值，不隨最弱持股的值縮放', () => {
+      expect(swapThreshold(20, 1, { swapMargin: 5, swapMarginMode: 'absolute' })).toBe(25)
+      expect(swapThreshold(20, -1, { swapMargin: 5, swapMarginMode: 'absolute' })).toBe(15)
+      // relative 模式在因子值接近 0 時門檻會塌縮成幾乎不用贏；absolute 不會
+      expect(swapThreshold(0.1, 1, { swapMargin: 15 })).toBeCloseTo(0.115)
+      expect(swapThreshold(0.1, 1, { swapMargin: 5, swapMarginMode: 'absolute' })).toBeCloseTo(5.1)
+    })
+
+    it('margin 為負一律當 0 處理', () => {
+      expect(swapThreshold(20, 1, { swapMargin: -5, swapMarginMode: 'absolute' })).toBe(20)
+    })
+  })
+
   describe('動能換股（swapOnBetter）', () => {
     // 25 天全在 1 月（只有 1/1 是排程換股日）。A 價格持平，B 每天漲 2%。
     // 前 7 天 A 動能高 → 買 A；第 8 天起 B 動能反超。
@@ -410,6 +431,26 @@ describe('runBacktest', () => {
       })
       expect(strict.holdings.at(-1)!.codes).toEqual(['1111'])
       expect(loose.holdings.at(-1)!.codes).toEqual(['2222'])
+    })
+
+    it('swapMarginMode=absolute：門檻是因子原始單位的差值，不是相對百分比', () => {
+      // A=20、B=21（差 1）：相對 15% 門檻要求 B>=23（見上一個測試）；絕對值模式門檻直接是「差多少」
+      const blocked = runBacktest(build(21), {
+        ...base,
+        swapOnBetter: true,
+        swapMargin: 5,
+        swapMarginMode: 'absolute',
+        swapMinHoldDays: 5,
+      })
+      const allowed = runBacktest(build(21), {
+        ...base,
+        swapOnBetter: true,
+        swapMargin: 0,
+        swapMarginMode: 'absolute',
+        swapMinHoldDays: 5,
+      })
+      expect(blocked.holdings.at(-1)!.codes).toEqual(['1111'])
+      expect(allowed.holdings.at(-1)!.codes).toEqual(['2222'])
     })
 
     it('最短持有天數未到 → 不換', () => {

@@ -23,6 +23,7 @@ describe('strategyParams', () => {
       stopExecNext: true,
       swapOnBetter: true,
       swapMargin: 0,
+      swapMarginMode: 'absolute' as const,
       swapMinHoldDays: 20,
       swapExecNext: false,
       regime: 'ma' as const,

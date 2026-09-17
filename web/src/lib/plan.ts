@@ -48,6 +48,8 @@ export const strategySchema = z.object({
   stopExecNext: z.boolean(),
   swapOnBetter: z.boolean(),
   swapMargin: z.number().nonnegative(),
+  /** relative＝最弱持股因子值的 margin%；absolute＝因子原始單位的差值。 */
+  swapMarginMode: z.enum(['relative', 'absolute']),
   swapMinHoldDays: z.number().int().nonnegative(),
   swapExecNext: z.boolean(),
   regime: z.enum(['off', 'ma', 'mom']),

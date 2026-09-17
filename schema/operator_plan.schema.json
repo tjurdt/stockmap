@@ -33,7 +33,7 @@
         "factor", "momDays", "momSkip", "customFormula", "customLabel", "customBetterWhen",
         "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
         "execLagDays", "stopType", "stopPct", "stopMaDays", "stopExecNext",
-        "swapOnBetter", "swapMargin", "swapMinHoldDays", "swapExecNext",
+        "swapOnBetter", "swapMargin", "swapMarginMode", "swapMinHoldDays", "swapExecNext",
         "regime", "regimeDays", "regimeExit", "bearHolding"
       ],
       "properties": {
@@ -91,7 +91,11 @@
         "swapMargin": {
           "type": "number",
           "minimum": 0,
-          "description": "動能換股門檻：挑戰者因子需比最弱持股好過此 %（相對值）"
+          "description": "動能換股門檻：挑戰者因子需比最弱持股好過此量，意義由 swapMarginMode 決定"
+        },
+        "swapMarginMode": {
+          "enum": ["relative", "absolute"],
+          "description": "relative=swapMargin 是最弱持股因子值的 %；absolute=swapMargin 是因子原始單位的差值"
         },
         "swapMinHoldDays": {
           "type": "integer",
