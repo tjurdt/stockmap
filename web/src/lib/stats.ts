@@ -37,26 +37,64 @@ export interface Bin {
 }
 
 /**
- * 等寬直方圖。`binCount` 為格數（>=1）。所有值相同 → 單一格。
+ * 報酬率直方圖（0.1 = 10%）：以 0 為分界，間距為 1 / 2 / 5 × 10^n 個百分點。
+ * binCount 是目標格數；實際採 20–50 格，窄分布以至少 1% 的間距補齊範圍。
  */
-export function histogram(values: readonly number[], binCount: number): Bin[] {
-  const n = Math.max(1, Math.round(binCount))
-  if (values.length === 0) return []
-  let lo = Infinity
-  let hi = -Infinity
-  for (const v of values) {
+export function histogram(values: readonly number[], binCount = 30): Bin[] {
+  const samples = values.filter(Number.isFinite)
+  if (samples.length === 0) return []
+  const target = Number.isFinite(binCount) ? Math.max(20, Math.min(50, Math.round(binCount))) : 30
+  let lo = 0
+  let hi = 0
+  for (const v of samples) {
     if (v < lo) lo = v
     if (v > hi) hi = v
   }
-  if (lo === hi) return [{ x0: lo, x1: hi, count: values.length }]
-  const width = (hi - lo) / n
+  if (!Number.isFinite((hi - lo) * 100)) return []
+
+  // Remove arithmetic noise at nonzero boundaries without turning a tiny loss into 0%.
+  const position = (v: number, step: number): number => {
+    const p = (v * 100) / step
+    const nearest = Math.round(p)
+    return nearest !== 0 && Math.abs(p - nearest) <= 8 * Number.EPSILON * Math.max(1, Math.abs(p))
+      ? nearest
+      : p
+  }
+  const extent = (step: number): [number, number] => [
+    Math.floor(position(lo, step)),
+    Math.max(1, Math.ceil(position(hi, step))),
+  ]
+  let step = 1
+  let bestDistance = Infinity
+  const maxPower = Math.max(0, Math.ceil(Math.log10((hi - lo) * 100 || 1)))
+  for (let power = 0; power <= maxPower; power++) {
+    for (const factor of [1, 2, 5]) {
+      const candidate = factor * 10 ** power
+      const [first, last] = extent(candidate)
+      const count = last - first
+      if (count >= 20 && count <= 50 && Math.abs(count - target) < bestDistance) {
+        step = candidate
+        bestDistance = Math.abs(count - target)
+      }
+    }
+  }
+
+  let [first, last] = extent(step)
+  const padding = Math.max(0, 20 - (last - first))
+  if (lo === 0 && hi > 0) last += padding
+  else if (lo < 0 && hi === 0) first -= padding
+  else {
+    first -= Math.floor(padding / 2)
+    last += Math.ceil(padding / 2)
+  }
+  const n = last - first
   const bins: Bin[] = Array.from({ length: n }, (_, i) => ({
-    x0: lo + i * width,
-    x1: lo + (i + 1) * width,
+    x0: ((first + i) * step) / 100,
+    x1: ((first + i + 1) * step) / 100,
     count: 0,
   }))
-  for (const v of values) {
-    const idx = Math.min(n - 1, Math.floor((v - lo) / width))
+  for (const v of samples) {
+    const idx = Math.max(0, Math.min(n - 1, Math.floor(position(v, step)) - first))
     bins[idx]!.count++
   }
   return bins
