@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { isMarketHours, marketPhase, quoteTradingDate, quotesTradingDate } from './live'
+import {
+  isMarketHours,
+  marketPhase,
+  quoteTradingDate,
+  quotesTradingDate,
+  selectLiveQuotes,
+} from './live'
 
 // 用固定 UTC 時刻推算 Asia/Taipei（UTC+8，台灣不實施日光節約）
 const at = (iso: string) => new Date(iso)
@@ -59,9 +65,28 @@ describe('quoteTradingDate', () => {
   it('quotesTradingDate 取最新、忽略沒價格的', () => {
     const m = new Map([
       ['2330', q({ time: '2026-09-09T05:00:00Z' })],
-      ['2317', q({ time: '2026-09-10T05:00:00Z' })],
-      ['2454', q({ price: null, time: '2026-09-11T05:00:00Z' })],
+      ['2317', q({ code: '2317', time: '2026-09-10T05:00:00Z' })],
+      ['2454', q({ code: '2454', price: null, time: '2026-09-11T05:00:00Z' })],
     ])
     expect(quotesTradingDate(m)).toBe('2026-09-10')
+  })
+
+  it('rejects impossible dates and falls back to a valid timestamp', () => {
+    expect(quoteTradingDate(q({ date: '2026-02-30' }))).toBeNull()
+    expect(quoteTradingDate(q({ date: '2026-13-01', time: '2026-09-10T05:00:00Z' }))).toBe(
+      '2026-09-10',
+    )
+  })
+
+  it('selects one trading day strictly after the official close', () => {
+    const quotes = new Map([
+      ['2330', q({ date: '2026-09-10' })],
+      ['2317', q({ code: '2317', date: '2026-09-09' })],
+      ['2454', q({ code: '2454', date: '2026-09-11', price: 0 })],
+    ])
+    expect([...selectLiveQuotes(quotes, '2026-09-09').keys()]).toEqual(['2330'])
+    expect(selectLiveQuotes(quotes, '2026-09-10').size).toBe(0)
+    expect(selectLiveQuotes(quotes, '2026-09-11').size).toBe(0)
+    expect(quotes.size).toBe(3)
   })
 })

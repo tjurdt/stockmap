@@ -31,26 +31,38 @@ export function useLiveQuotes(codes: string[], enabled = true) {
   useEffect(() => {
     if (!active) {
       setQuotes(new Map())
+      setFailed(false)
       return
     }
+    setQuotes(new Map())
+    setFailed(false)
     let alive = true
+    let inFlight = false
     let lastAt = 0
     const tick = () => {
       const ph = marketPhase()
       setPhase(ph)
       const wait = ph === 'open' ? OPEN_MS : CLOSED_MS
-      if (Date.now() - lastAt < wait) return
+      if (inFlight || Date.now() - lastAt < wait) return
       lastAt = Date.now()
-      fetchLiveQuotes(codes).then(
-        (q) => {
-          if (!alive) return
-          setFailed(false)
-          if (q.size) setQuotes(q)
-        },
-        () => {
-          if (alive) setFailed(true)
-        },
-      )
+      inFlight = true
+      fetchLiveQuotes(codes)
+        .then(
+          (q) => {
+            if (!alive) return
+            setFailed(q.size === 0)
+            setQuotes(q)
+          },
+          () => {
+            if (alive) {
+              setFailed(true)
+              setQuotes(new Map())
+            }
+          },
+        )
+        .finally(() => {
+          inFlight = false
+        })
     }
     tick()
     const id = window.setInterval(tick, TICK_MS)
@@ -61,5 +73,10 @@ export function useLiveQuotes(codes: string[], enabled = true) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, key])
 
-  return { quotes, isLive: active && quotes.size > 0, phase, failed }
+  return {
+    quotes: active ? quotes : new Map<string, LiveQuote>(),
+    isLive: active && quotes.size > 0,
+    phase,
+    failed,
+  }
 }

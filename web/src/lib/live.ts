@@ -43,7 +43,9 @@ export async function fetchLiveQuotes(codes: string[]): Promise<Map<string, Live
   for (let i = 0; i < codes.length; i += BATCH) batches.push(codes.slice(i, i + BATCH))
   const results = await Promise.all(
     batches.map(async (batch) => {
-      const res = await fetch(`${QUOTE_URL}?codes=${batch.join(',')}`)
+      const res = await fetch(`${QUOTE_URL}?codes=${batch.join(',')}`, {
+        signal: AbortSignal.timeout(15_000),
+      })
       if (!res.ok) throw new Error(`盤中報價 HTTP ${res.status}`)
       return responseSchema.parse(await res.json()).quotes
     }),
@@ -90,9 +92,13 @@ export function taipei(now: Date = new Date()): TpeNow {
 
 /** 一筆報價對應的台股交易日（YYYY-MM-DD，台北時區）。worker 沒給 date 就用 time 推。 */
 export function quoteTradingDate(q: LiveQuote): string | null {
-  if (q.date && /^\d{4}-\d{2}-\d{2}$/.test(q.date)) return q.date
-  if (q.date && /^\d{8}$/.test(q.date)) {
-    return `${q.date.slice(0, 4)}-${q.date.slice(4, 6)}-${q.date.slice(6)}`
+  const date =
+    q.date && /^\d{8}$/.test(q.date)
+      ? `${q.date.slice(0, 4)}-${q.date.slice(4, 6)}-${q.date.slice(6)}`
+      : q.date
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const parsed = new Date(`${date}T00:00:00Z`)
+    if (Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date) return date
   }
   if (!q.time) return null
   const t = new Date(q.time)
@@ -102,12 +108,31 @@ export function quoteTradingDate(q: LiveQuote): string | null {
 /** 一批報價裡最新的交易日（沒有可用報價 → null）。 */
 export function quotesTradingDate(quotes: Map<string, LiveQuote>): string | null {
   let best: string | null = null
-  for (const q of quotes.values()) {
-    if (q.price == null) continue
+  for (const [code, q] of quotes) {
+    if (code !== q.code || q.price == null || !Number.isFinite(q.price) || q.price <= 0) continue
     const d = quoteTradingDate(q)
     if (d && (best == null || d > best)) best = d
   }
   return best
+}
+
+/** Only the newest quoted trading day may extend official data. */
+export function selectLiveQuotes(
+  quotes: Map<string, LiveQuote>,
+  officialDate: string | null,
+): Map<string, LiveQuote> {
+  const date = quotesTradingDate(quotes)
+  if (!date || (officialDate != null && date <= officialDate)) return new Map()
+  return new Map(
+    [...quotes].filter(
+      ([code, q]) =>
+        code === q.code &&
+        q.price != null &&
+        Number.isFinite(q.price) &&
+        q.price > 0 &&
+        quoteTradingDate(q) === date,
+    ),
+  )
 }
 
 export type MarketPhase = 'pre' | 'open' | 'closed'
