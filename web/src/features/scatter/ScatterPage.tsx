@@ -59,8 +59,9 @@ export function ScatterPage() {
       ? ` · 名單 ${state.data.universeRankedAt}`
       : ''
   const asOf = state.status !== 'ready' ? '載入中…' : `${asOfLabel}${ranked}`
-  const status =
-    state.status !== 'ready'
+  const status = market.failed
+    ? '最新報價暫時無法取得，顯示官方收盤資料'
+    : state.status !== 'ready'
       ? '載入中…'
       : market.provisionalDate
         ? `${market.phase === 'open' ? '盤中' : '最新'}報價 ${market.quoted} 檔 · 動能已補算到 ${market.provisionalDate}（暫定）`
@@ -87,7 +88,9 @@ export function ScatterPage() {
               />
             </div>
           </details>
-          {stocks.length > 0 && <QuotePanel stocks={stocks} live={isLive} />}
+          {stocks.length > 0 && (
+            <QuotePanel stocks={stocks} live={isLive && market.phase === 'open'} />
+          )}
         </div>
         <div className={styles.main}>
           {stocks.length > 0 ? (

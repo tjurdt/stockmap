@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { loadRecentFactorHistory } from '../lib/history'
+import { quotesTradingDate } from '../lib/live'
 import { freshnessLabel } from '../lib/liveRow'
 import { applyLive } from '../lib/overlay'
 import type { Snapshot } from '../lib/data'
@@ -18,20 +19,30 @@ export function useLiveSnapshot(enabled = true) {
   const snap = useSnapshot()
   const hist = useAsync(loadRecentFactorHistory, [])
   const rows = hist.status === 'ready' ? hist.data : []
-  const market = useLiveMarket(rows, [], enabled)
-
   const snapStocks: Snapshot['stocks'] = snap.status === 'ready' ? snap.data.stocks : []
+  const snapshotDate = snap.status === 'ready' ? snap.data.asOf : ''
+  const market = useLiveMarket(
+    rows,
+    snapStocks.map((s) => s.code),
+    enabled,
+    snapshotDate || null,
+  )
   const provisionalRow = market.provisionalDate ? (market.rows.at(-1) ?? null) : null
   const stocks = useMemo(
-    () => applyLive(snapStocks, market.quotes, provisionalRow),
-    [snapStocks, market.quotes, provisionalRow],
+    () => applyLive(snapStocks, market.quotes, snapshotDate, provisionalRow),
+    [snapStocks, market.quotes, snapshotDate, provisionalRow],
   )
 
-  const asOf = market.provisionalDate
-    ? freshnessLabel(market, market.phase)
-    : snap.status === 'ready'
-      ? `收盤 ${snap.data.asOf}`
-      : '載入中…'
+  const quoteDate = quotesTradingDate(market.quotes)
+  const asOf =
+    quoteDate && quoteDate > snapshotDate
+      ? freshnessLabel(
+          { ...market, provisionalDate: quoteDate, officialDate: snapshotDate || null },
+          market.phase,
+        )
+      : snap.status === 'ready'
+        ? `收盤 ${snap.data.asOf}`
+        : '載入中…'
 
   return { snap, stocks, market, asOf }
 }

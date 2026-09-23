@@ -6,32 +6,44 @@
  */
 import type { Stock } from './data'
 import type { HistoryRow } from './history'
-import type { LiveQuote } from './live'
+import { quotesTradingDate, selectLiveQuotes, type LiveQuote } from './live'
 
 export function applyLive(
   stocks: Stock[],
   quotes: Map<string, LiveQuote>,
+  asOf: string,
   momentumFrom?: HistoryRow | null,
 ): Stock[] {
-  const mom = new Map(momentumFrom?.stocks.map((s) => [s.code, s]) ?? [])
-  return stocks.map((s) => {
-    const q = quotes.get(s.code)
-    const m = mom.get(s.code)
-    if ((!q || q.price == null) && !m) return s
-    const withMom = m
-      ? { ...s, mom20: m.mom20, mom60: m.mom60, mom121: m.mom121, pe: m.pe, pb: m.pb, dy: m.dy }
-      : s
-    if (!q || q.price == null) return withMom
-    const chgPct =
-      q.prevClose != null && q.prevClose > 0
-        ? ((q.price - q.prevClose) / q.prevClose) * 100
-        : s.chgPct
-    const scale = s.close != null && s.close > 0 ? q.price / s.close : null
-    return {
-      ...withMom,
-      close: q.price,
-      chgPct,
-      mcap: scale != null && s.mcap != null ? s.mcap * scale : s.mcap,
-    }
-  })
+  const currentQuotes = selectLiveQuotes(quotes, asOf)
+  const quoteDate = quotesTradingDate(currentQuotes)
+  const row =
+    momentumFrom && momentumFrom.date > asOf && (!quoteDate || momentumFrom.date === quoteDate)
+      ? momentumFrom
+      : null
+  const mom = new Map(row?.stocks.map((s) => [s.code, s]) ?? [])
+  const advanced = quoteDate != null || row != null
+  return stocks
+    .map((s) => {
+      const q = currentQuotes.get(s.code)
+      const m = mom.get(s.code)
+      if (!advanced) return s
+      const withMom = m
+        ? { ...s, mom20: m.mom20, mom60: m.mom60, mom121: m.mom121, pe: m.pe, pb: m.pb, dy: m.dy }
+        : s
+      if (!q || q.price == null) return { ...withMom, chgPct: null, value: null }
+      const chgPct =
+        q.prevClose != null && Number.isFinite(q.prevClose) && q.prevClose > 0
+          ? ((q.price - q.prevClose) / q.prevClose) * 100
+          : null
+      const scale = s.close != null && s.close > 0 ? q.price / s.close : null
+      return {
+        ...withMom,
+        close: q.price,
+        chgPct,
+        // The quote service does not provide today's turnover.
+        value: null,
+        mcap: scale != null && s.mcap != null ? s.mcap * scale : s.mcap,
+      }
+    })
+    .sort((a, b) => (b.mcap ?? -Infinity) - (a.mcap ?? -Infinity))
 }

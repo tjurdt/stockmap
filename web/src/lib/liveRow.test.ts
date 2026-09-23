@@ -37,6 +37,27 @@ const quote = (code: string, price: number | null, time: string): LiveQuote => (
 const TODAY = '2026-09-10T05:00:00Z'
 
 describe('withProvisionalRow', () => {
+  it('does not mix an older or undated quote into the newest trading day', () => {
+    for (const time of ['2026-09-04T05:00:00Z', 'not a date']) {
+      const r = withProvisionalRow(
+        history(5),
+        new Map([
+          ['2330', quote('2330', 110, TODAY)],
+          ['2317', quote('2317', 80, time)],
+        ]),
+      )
+      expect(r.provisionalDate).toBe('2026-09-10')
+      expect(r.quoted).toBe(1)
+      expect(r.rows.at(-1)!.stocks.find((s) => s.code === '2317')!.close).toBe(100)
+    }
+  })
+
+  it.each([0, -1, NaN, Infinity])('does not advance history for invalid price %s', (price) => {
+    const rows = history(5)
+    expect(withProvisionalRow(rows, new Map([['2330', quote('2330', price, TODAY)]])).rows).toBe(
+      rows,
+    )
+  })
   it('報價比歷史新 → 補一列暫定當日資料', () => {
     const rows = history(5)
     const r = withProvisionalRow(rows, new Map([['2330', quote('2330', 110, TODAY)]]))

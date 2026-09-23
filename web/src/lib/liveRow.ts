@@ -20,7 +20,7 @@
  * 下游一律要把 `provisionalDate` 標示給使用者看。
  */
 import type { HistoryRow } from './history'
-import { quotesTradingDate, type LiveQuote, type MarketPhase } from './live'
+import { quotesTradingDate, selectLiveQuotes, type LiveQuote, type MarketPhase } from './live'
 import { momentumFields } from './momentum'
 
 /** 重算動能需要的最長回看窗（mom121 = 250 + 1）再加一點緩衝。 */
@@ -48,7 +48,8 @@ export function withProvisionalRow(
   const officialDate = last?.date ?? null
   if (!last || quotes.size === 0) return { rows, provisionalDate: null, quoted: 0, officialDate }
 
-  const date = quotesTradingDate(quotes)
+  const currentQuotes = selectLiveQuotes(quotes, last.date)
+  const date = quotesTradingDate(currentQuotes)
   if (!date || date <= last.date) return { rows, provisionalDate: null, quoted: 0, officialDate }
 
   // 每檔的還原價序列（只取尾巴，足夠算最長的動能窗）
@@ -65,7 +66,7 @@ export function withProvisionalRow(
 
   let quoted = 0
   const stocks = last.stocks.map((s) => {
-    const q = quotes.get(s.code)
+    const q = currentQuotes.get(s.code)
     const usable = q?.price != null && q.price > 0 && s.close != null && s.close > 0
     const k = usable ? q!.price! / s.close! : 1
     if (usable) quoted++
