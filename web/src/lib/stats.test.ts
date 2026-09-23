@@ -28,17 +28,65 @@ describe('quantile', () => {
 })
 
 describe('histogram', () => {
-  it('等寬分格、總數守恆', () => {
-    const bins = histogram([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 5)
-    expect(bins).toHaveLength(5)
-    expect(bins.reduce((s, b) => s + b.count, 0)).toBe(11)
-    expect(bins[0]!.x0).toBe(0)
-    expect(bins[4]!.x1).toBe(10)
-    // 最後一格含上界
-    expect(bins[4]!.count).toBeGreaterThanOrEqual(2)
+  it.each([
+    [-0.37, 2.43],
+    [-0.8, 5.2],
+    [-0.6, 14.4],
+    [0.001, 0.002],
+    [-0.002, -0.001],
+    [0, 0],
+    [3, 3],
+    [-0.3, -0.3],
+  ])('uses 20–50 zero-aligned bins for [%s, %s]', (lo, hi) => {
+    const values = Array.from({ length: 101 }, (_, i) => lo + ((hi - lo) * i) / 100)
+    const bins = histogram(values)
+    expect(bins.length).toBeGreaterThanOrEqual(20)
+    expect(bins.length).toBeLessThanOrEqual(50)
+    expect(bins.reduce((s, b) => s + b.count, 0)).toBe(values.length)
+    expect(bins.some((b) => b.x0 === 0)).toBe(true)
+    expect(bins.some((b) => b.x0 < 0 && b.x1 > 0)).toBe(false)
+    expect(bins[0]!.x0).toBeLessThanOrEqual(lo)
+    expect(bins.at(-1)!.x1).toBeGreaterThanOrEqual(hi)
+    const step = (bins[0]!.x1 - bins[0]!.x0) * 100
+    expect(step).toBeCloseTo(Math.round(step), 10)
+    expect(step).toBeGreaterThanOrEqual(1 - 1e-10)
+    const normalized = step / 10 ** Math.floor(Math.log10(step + 1e-10))
+    expect([1, 2, 5].some((s) => Math.abs(s - normalized) < 1e-10)).toBe(true)
+    for (const b of bins) {
+      expect(b.x1 - b.x0).toBeCloseTo(step / 100, 10)
+      expect(b.x0 * 100).toBeCloseTo(Math.round(b.x0 * 100), 10)
+    }
   })
-  it('全相同值 → 單格', () => {
-    expect(histogram([3, 3, 3], 10)).toEqual([{ x0: 3, x1: 3, count: 3 }])
+
+  it.each([
+    [-0.37, 2.43, 0.1],
+    [-0.8, 5.2, 0.2],
+    [-0.6, 14.4, 0.5],
+  ])('selects a readable width for [%s, %s]', (lo, hi, width) => {
+    const bins = histogram([lo, hi])
+    expect(bins[0]!.x1 - bins[0]!.x0).toBeCloseTo(width)
+  })
+
+  it('places exact boundaries on the right, keeps tiny losses negative, and includes the maximum', () => {
+    const bins = histogram([-0.1, -1e-15, 0, 0.01, 0.03, 0.3 - 0.2, 0.2])
+    expect(bins.find((b) => b.x0 === 0)!.count).toBe(1)
+    expect(bins.find((b) => b.x1 === 0)!.count).toBe(1)
+    expect(bins.find((b) => b.x0 === 0.01)!.count).toBe(1)
+    expect(bins.find((b) => b.x0 === 0.03)!.count).toBe(1)
+    expect(bins.find((b) => b.x0 === 0.1)!.count).toBe(1)
+    expect(bins.at(-1)!.count).toBe(1)
+    expect(bins.reduce((s, b) => s + b.count, 0)).toBe(7)
+  })
+
+  it('ignores non-finite values and bounds invalid target counts', () => {
+    expect(histogram([NaN, Infinity, -Infinity])).toEqual([])
+    expect(histogram([-Number.MAX_VALUE, Number.MAX_VALUE])).toEqual([])
+    expect(histogram([0, 0.1, NaN], NaN).reduce((s, b) => s + b.count, 0)).toBe(2)
+    for (const target of [-1, 1, 1000, Infinity]) {
+      const bins = histogram([-1, 10], target)
+      expect(bins.length).toBeGreaterThanOrEqual(20)
+      expect(bins.length).toBeLessThanOrEqual(50)
+    }
   })
   it('空輸入 → 空', () => {
     expect(histogram([], 5)).toEqual([])
