@@ -444,3 +444,199 @@
   font-size: 12.5px;
   line-height: 1.7;
 }
+
+/* ── 日期時間軸（交易日甘特圖） ─────────────────────────────
+   欄＝交易日；排程成交日整欄用 --accent 框、訊號日用 --muted 框、今天用 --ink 框。
+   數字＝持有第幾個交易日。未來的格子淡化＝推估。 */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.tlScroll {
+  overflow-x: auto;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+}
+.tl {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-xs);
+}
+.tl th,
+.tl td {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  text-align: center;
+  border-bottom: 1px solid var(--hair);
+  font-weight: 400;
+}
+.tl .tlLabel {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 118px;
+  max-width: 150px;
+  padding: 0 var(--sp-2);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.tlName {
+  color: var(--muted);
+  font-weight: 400;
+}
+.tl .tlMonth {
+  text-align: left;
+  padding-left: var(--sp-1);
+  color: var(--ink-2);
+  font-weight: 600;
+  border-left: 1px solid var(--line);
+  background: var(--surface-sunken);
+}
+.tlDay {
+  color: var(--muted);
+  background: var(--surface-sunken);
+}
+.tl .tlDay[data-today='true'] {
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+}
+.tl [data-future='true'] {
+  opacity: 0.62;
+}
+.tl .tlDay[data-future='true'],
+.tl .tlSched[data-future='true'] {
+  opacity: 1;
+}
+
+/* 欄標記：同一欄所有格子一起框起來 */
+.tl .tlTradeCol {
+  box-shadow:
+    inset 2px 0 var(--accent),
+    inset -2px 0 var(--accent);
+}
+.tl .tlSignalCol {
+  box-shadow:
+    inset 1px 0 var(--muted),
+    inset -1px 0 var(--muted);
+}
+.tl .tlTodayCol {
+  box-shadow:
+    inset 2px 0 var(--ink),
+    inset -2px 0 var(--ink);
+}
+.tl .tlGap {
+  border-left: 2px dashed var(--chart-axis);
+}
+
+.tlSched {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.tlSched[data-kind='signal'] {
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-weight: 700;
+}
+.tlSched[data-kind='trade'],
+.tlSched[data-kind='both'] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* 持股列的格子狀態（圖例共用同一組 data-kind） */
+.tlCell[data-kind='entry'],
+.tlLegend i[data-kind='entry'] {
+  background: var(--up-soft);
+  color: var(--up);
+  font-weight: 700;
+}
+.tlCell[data-kind='locked'],
+.tlLegend i[data-kind='locked'] {
+  color: var(--muted);
+  background: repeating-linear-gradient(135deg, var(--surface-sunken) 0 4px, var(--hair) 4px 6px);
+}
+.tlCell[data-kind='ready'],
+.tlLegend i[data-kind='ready'] {
+  background: var(--tone-swap);
+  color: var(--ink);
+  font-weight: 700;
+  outline: 2px solid var(--ink);
+  outline-offset: -3px;
+}
+.tlCell[data-kind='free'],
+.tlLegend i[data-kind='free'] {
+  background: var(--tone-swap);
+  color: var(--ink-2);
+}
+.tlCell[data-kind='held'],
+.tlLegend i[data-kind='held'] {
+  background: var(--accent-soft);
+  color: var(--ink-2);
+}
+.tlCell[data-kind='sell'],
+.tlLegend i[data-kind='sell'] {
+  background: var(--down-soft);
+  color: var(--down);
+  font-weight: 700;
+}
+
+.tlLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+.tlLegend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tlLegend i {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 3px;
+  font-style: normal;
+  font-size: 10px;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+}
+.tlLegend .tlLegendSignal {
+  background: var(--surface-sunken);
+  font-weight: 700;
+  box-shadow:
+    inset 1px 0 var(--muted),
+    inset -1px 0 var(--muted);
+}
+.tlLegend .tlLegendTrade {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.tlLegend .tlLegendGap {
+  min-width: 0;
+  width: 0;
+  padding: 0;
+  border: none;
+  border-left: 2px dashed var(--chart-axis);
+  border-radius: 0;
+}

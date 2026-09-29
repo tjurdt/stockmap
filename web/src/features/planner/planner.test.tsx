@@ -10,6 +10,7 @@ import type { HistoryRow } from '../../lib/history'
 import type { OperatorPlan } from '../../lib/plan'
 import { DEFAULT_PARAMS } from '../backtest/strategyParams'
 import { buildOperatorReport } from '../signal/report'
+import { DateTimeline } from './DateTimeline'
 import { HoldingsPanel } from './HoldingsPanel'
 import { SwapWatchPanel } from './SwapWatchPanel'
 import { TomorrowCard } from './TomorrowCard'
@@ -136,5 +137,34 @@ describe('SwapWatchPanel', () => {
     p.strategy.swapOnBetter = false
     render(<SwapWatchPanel report={reportOf(10, p)} factor="m20" />)
     expect(screen.getByText(/只在/)).toBeInTheDocument()
+  })
+})
+
+describe('DateTimeline', () => {
+  it('標出排程訊號日 / 成交日，持股格子從買進日第 0 天數起', () => {
+    const r = reportOf(
+      9, // 1/9 週五（fixture 含週末，asOf 要落在交易日）
+      plan({
+        holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-05' }],
+      }),
+    )
+    const { container } = render(<DateTimeline report={r} />)
+    expect(screen.getAllByText('訊號').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('換股').length).toBeGreaterThan(0)
+    const entry = container.querySelector('td[data-kind="entry"]')!
+    expect(entry.textContent).toBe('0')
+    expect(entry.getAttribute('title')).toContain('2026-01-05')
+    expect(container.querySelector('td[data-kind="ready"]')!.textContent).toBe('10')
+    expect(container.querySelector('th[data-today="true"]')).not.toBeNull()
+  })
+
+  it('沒開動能換股：不畫最短持有鎖定期', () => {
+    const p = plan({
+      holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-05' }],
+    })
+    p.strategy.swapOnBetter = false
+    const { container } = render(<DateTimeline report={reportOf(9, p)} />)
+    expect(container.querySelector('td[data-kind="locked"]')).toBeNull()
+    expect(container.querySelector('td[data-kind="held"]')).not.toBeNull()
   })
 })

@@ -61,7 +61,11 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
                   ? '換股訊號日（動能換股觸發）'
                   : '換股訊號日'}
             </b>{' '}
-            → 下一個交易日（{report.nextTradingDay}）照下方「本次換股動作」操作。
+            →{' '}
+            {report.verdict.tradeDate === report.asOfDate
+              ? `今天收盤前（${report.verdict.tradeDate}）`
+              : `下一個交易日（${report.verdict.tradeDate}）`}
+            照下方「本次換股動作」操作。
           </p>
         ) : (
           <p>
@@ -245,7 +249,9 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
           {report.isSignalDay
             ? report.isEntryDay
               ? '上線進場動作（明天執行）'
-              : '本次換股動作（明天執行）'
+              : `本次換股動作（${
+                  report.verdict.tradeDate === report.asOfDate ? '今天收盤執行' : '明天執行'
+                }）`
             : `下次換股日（約 ${report.nextRebalanceDate}）要做的`}
         </h3>
         {!report.isSignalDay && (

@@ -52,6 +52,8 @@ function StepLine({ a }: { a: ActionRow }) {
 
 export function TomorrowCard({ report }: { report: OperatorReport }) {
   const v = report.verdict
+  // 策略設定訊號日當天成交（execLagDays / swapExecNext）時，下單日就是今天
+  const sameDay = v.act && v.tradeDate === report.asOfDate
   const w = report.swapWatch
   // 要動手時才列步驟；停損要單獨列在最前面（不等換股日）
   const todo: ActionRow[] = v.act
@@ -74,7 +76,7 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
   return (
     <>
       <div className={`${styles.verdict} ${v.act ? styles.verdictAct : styles.verdictCalm}`}>
-        <p className={styles.verdictLabel}>明天要做什麼</p>
+        <p className={styles.verdictLabel}>{sameDay ? '今天收盤要做什麼' : '明天要做什麼'}</p>
         <p className={styles.verdictHead}>
           {v.act ? '❗ ' : '✅ '}
           {v.headline}
@@ -92,7 +94,7 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
       {todo.length > 0 && (
         <div className={styles.card}>
           <h3>
-            明天（{report.nextTradingDay}）的下單清單{' '}
+            {sameDay ? '今天收盤前' : '明天'}（{v.tradeDate}）的下單清單{' '}
             <span className={styles.sub}>照順序做完就結束</span>
             <InfoHint label="怎麼下單才貼近回測">
               <ul>

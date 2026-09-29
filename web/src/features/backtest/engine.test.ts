@@ -706,3 +706,79 @@ describe('withCustomMomentum', () => {
     expect(r.holdings.at(-1)!.codes).toEqual(['2222']) // 後段短窗動能最強
   })
 })
+
+// 釘住日期語意（/plan 的日期時間軸照這套畫，改引擎要一起改）。
+// 2026-09-28 起的真實台股交易日（10/9 國慶補假、10/26 光復節補假休市）。
+describe('日期語意：訊號日 / 成交日 / 最短持有', () => {
+  const HOLIDAYS = new Set(['2026-10-09', '2026-10-26'])
+  const tradingDays: string[] = []
+  for (let t = Date.UTC(2026, 8, 28); t <= Date.UTC(2026, 9, 30); t += 864e5) {
+    const d = new Date(t)
+    const iso = d.toISOString().slice(0, 10)
+    if (d.getUTCDay() % 6 !== 0 && !HOLIDAYS.has(iso)) tradingDays.push(iso)
+  }
+  // 9 月：A 最強；10/1 起 B 最強；challengerFrom 起 C 大幅反超（挑戰者）
+  const build = (bFrom: string, challengerFrom: string) =>
+    tradingDays.map((d) =>
+      row(d, [
+        { code: 'A', adj: 100, f: 50 },
+        { code: 'B', adj: 100, f: d >= bFrom ? 60 : 10 },
+        { code: 'C', adj: 100, f: d >= challengerFrom ? 100 : 0 },
+      ]),
+    )
+  const base = {
+    factor: 'm20' as const,
+    topN: 1,
+    rebalance: 'M' as const,
+    rebalanceDay: 1,
+    weighting: 'equal' as const,
+    costBps: 0,
+  }
+
+  it('每月第 1 個交易日 = 訊號日；execLagDays=1 → 第 2 個交易日賣舊買新（同一天）', () => {
+    const r = runBacktest(build('2026-10-01', '2099-01-01'), { ...base, execLagDays: 1 })
+    const oct = r.holdings.find((h) => h.signalDate.startsWith('2026-10'))!
+    expect(oct).toMatchObject({ signalDate: '2026-10-01', tradeDate: '2026-10-02', codes: ['B'] })
+    const at = (d: string) => r.dailyHoldings[r.dates.indexOf(d)]
+    expect(at('2026-10-01')).toEqual(['A']) // 訊號日收盤後還抱 A
+    expect(at('2026-10-02')).toEqual(['B']) // 成交日收盤：A 賣光、B 買進，同一天
+  })
+
+  it('最短持有 N：買進日 = 第 0 天；第 N 個交易日可為訊號日，隔日成交', () => {
+    // 10/2 買進 B；10/5 起 C 反超。N=10 → 10/19 訊號（跨過 10/9 休市）、10/20 成交
+    const r = runBacktest(build('2026-10-01', '2026-10-05'), {
+      ...base,
+      execLagDays: 1,
+      swapOnBetter: true,
+      swapMargin: 0,
+      swapMinHoldDays: 10,
+    })
+    expect(r.holdings.at(-1)).toMatchObject({
+      signalDate: '2026-10-19',
+      tradeDate: '2026-10-20',
+      codes: ['C'],
+    })
+  })
+
+  it('排程換股沒換掉的續抱股，持有天數從最初買進日起算（不歸零）', () => {
+    // A 9/29 買進後一路續抱（10/1 排程換股名單不變）；10/5 起 C 反超。
+    // 從 9/29 起算第 10 個交易日 = 10/14；若歸零從 10/2 算會是 10/19
+    const r = runBacktest(build('2099-01-01', '2026-10-05'), {
+      ...base,
+      execLagDays: 1,
+      swapOnBetter: true,
+      swapMargin: 0,
+      swapMinHoldDays: 10,
+    })
+    expect(r.holdings.at(-1)).toMatchObject({ signalDate: '2026-10-14', tradeDate: '2026-10-15' })
+  })
+
+  it('回測起點落在月中：起點那天被當成該月第 1 個交易日', () => {
+    const r = runBacktest(build('2026-10-01', '2099-01-01'), {
+      ...base,
+      execLagDays: 1,
+      startDate: '2026-09-29',
+    })
+    expect(r.holdings[0]).toMatchObject({ signalDate: '2026-09-29', tradeDate: '2026-09-30' })
+  })
+})

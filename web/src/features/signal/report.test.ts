@@ -456,3 +456,52 @@ describe('報價覆寫與暫定資料', () => {
     expect(r.provisionalDate).toBe('2026-01-30')
   })
 })
+
+// 下單日照策略設定走，不寫死「明天」（與 engine 的 execLagDays / swapExecNext 一致）
+describe('verdict.tradeDate', () => {
+  const rebalPlan = (execLagDays: number) =>
+    plan({
+      strategy: { rebalance: 'M', rebalanceDay: 28, execLagDays },
+      holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-27' }],
+    })
+
+  it('排程換股 execLagDays=1 → 下一個交易日', () => {
+    const r = buildOperatorReport(history(28), [], rebalPlan(1), names)!
+    expect(r.verdict.kind).toBe('rebalance')
+    expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
+    expect(r.verdict.headline).not.toContain('今天收盤')
+  })
+
+  it('排程換股 execLagDays=0 → 今天收盤', () => {
+    const r = buildOperatorReport(history(28), [], rebalPlan(0), names)!
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+    expect(r.verdict.headline).toContain('今天收盤')
+  })
+
+  it('動能換股 swapExecNext=false → 今天收盤', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: {
+          rebalance: 'M',
+          rebalanceDay: 25,
+          topN: 1,
+          swapOnBetter: true,
+          swapMargin: 15,
+          swapMinHoldDays: 10,
+          swapExecNext: false,
+        },
+        holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-05' }],
+      }),
+      names,
+    )!
+    expect(r.verdict.kind).toBe('swap')
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+  })
+
+  it('沒事的日子 → 下一個交易日', () => {
+    const r = buildOperatorReport(history(10), [], plan(), names)!
+    expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
+  })
+})

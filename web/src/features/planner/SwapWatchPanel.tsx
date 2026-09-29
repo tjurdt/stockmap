@@ -14,6 +14,7 @@ import styles from './planner.module.css'
 
 export function SwapWatchPanel({ report, factor }: { report: OperatorReport; factor: MetricKey }) {
   const w = report.swapWatch
+  const sameDay = report.timeline.swapLagDays === 0
   const fmt = factorFmt(factor)
   // relative：門檻是最弱持股因子值的 margin%；absolute：門檻是因子原始單位的差值
   const marginText = w.marginMode === 'absolute' ? fmt(w.margin) : `${w.margin}%`
@@ -47,7 +48,15 @@ export function SwapWatchPanel({ report, factor }: { report: OperatorReport; fac
               個交易日；②有未持有的股票{report.factorLabel}比它高出 {marginText} 以上。
             </li>
             <li>
-              條件在某天收盤成立 → <b>隔一個交易日</b>成交（收盤後才知道排名，下一盤才進得去）。
+              {sameDay ? (
+                <>
+                  條件在某天收盤成立 → <b>同一天收盤</b>成交（策略設定訊號日成交，回測較理想化）。
+                </>
+              ) : (
+                <>
+                  條件在某天收盤成立 → <b>隔一個交易日</b>成交（收盤後才知道排名，下一盤才進得去）。
+                </>
+              )}
             </li>
             <li>
               「已贏最弱持股」是目前的領先幅度，「距門檻」是還差多少才達到 {marginText} 的要求。
@@ -64,8 +73,8 @@ export function SwapWatchPanel({ report, factor }: { report: OperatorReport; fac
           {w.minHoldReady ? (
             <>
               　它<b>已經抱滿</b>最短持有 {w.minHoldDays} 個交易日 —— 只要有候補股票的
-              {report.factorLabel}達到 <b>{fmt(w.thresholdFactor)}</b>
-              ，隔一個交易日就換。
+              {report.factorLabel}達到 <b>{fmt(w.thresholdFactor)}</b>，
+              {sameDay ? '當天收盤就換' : '隔一個交易日就換'}。
             </>
           ) : (
             <>
@@ -141,7 +150,7 @@ export function SwapWatchPanel({ report, factor }: { report: OperatorReport; fac
                     {!c.qualified
                       ? '門檻未達'
                       : w.minHoldReady
-                        ? '可換 → 明天執行'
+                        ? `可換 → ${sameDay ? '今天收盤執行' : '明天執行'}`
                         : `門檻已過，等 ${w.earliestSwapDate}`}
                   </td>
                 </tr>
