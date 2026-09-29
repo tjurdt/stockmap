@@ -27,6 +27,7 @@ import {
   withComputedFactors,
   type BacktestConfig,
 } from '../backtest/engine'
+import { buildTimeline, type Timeline } from './timeline'
 
 export interface TargetRow {
   code: string
@@ -136,7 +137,10 @@ export interface SwapWatch {
   challengers: SwapChallenger[]
   /** 所有掉出名單的持股都過了最短持有 */
   minHoldReady: boolean
-  /** 最快能換股的日期（= 待換持股裡最晚的最短持有到期日的下一個交易日） */
+  /**
+   * 最快能換股的成交日：最短持有已滿足 → 下一個交易日；否則 = 待換持股裡最晚的最短持有到期日
+   * （最早可成為訊號日）再過 swapExecNext ? 1 : 0 個交易日。
+   */
   earliestSwapDate: string | null
   /** 距離 earliestSwapDate 還有幾個交易日（0 = 就是下一個交易日） */
   tradingDaysToSwap: number | null
@@ -156,6 +160,12 @@ export interface Verdict {
   headline: string
   /** 補充一兩句 */
   detail: string
+  /**
+   * 這次要下單的日期：排程換股 = asOfDate + execLagDays、動能換股 = asOfDate + (swapExecNext ? 1 : 0)
+   * 個交易日，停損 = stopExecNext ? 下一個交易日 : asOfDate，轉空清倉 = asOfDate，
+   * 其餘 = 下一個交易日。等於 asOfDate 時代表「今天收盤就要成交」。
+   */
+  tradeDate: string
 }
 
 export interface OperatorReport {
@@ -186,6 +196,8 @@ export interface OperatorReport {
   /** asOfDate 之後的下一個台股交易日 */
   nextTradingDay: string
   nextRebalanceDate: string
+  /** 下次排程換股的成交日（= 訊號日 nextRebalanceDate + execLagDays 個交易日，同一天賣舊買新） */
+  rebalanceTradeDate: string
   /** 從今天到下次排程換股日還有幾個交易日 */
   tradingDaysToRebalance: number
   /** 目前空頭且策略設定「空頭買台灣50反1」 */
@@ -198,6 +210,8 @@ export interface OperatorReport {
   stopActionsNow: { code: string; name: string; dropPct: number }[]
   swapWatch: SwapWatch
   verdict: Verdict
+  /** 日期時間軸（訊號日 / 成交日 / 最短持有）—— 頁面照畫，不自己算 */
+  timeline: Timeline
   /** 目前持股總市值（有現價的部分） */
   totalValue: number | null
 }
@@ -494,6 +508,8 @@ export function buildOperatorReport(
   const bearInverse = regime === 'bear' && plan.strategy.bearHolding === 'inverse'
   const next = nextTradingDay(lastRow.date, holidays)
   const nextRebal = nextRebalanceDate(lastRow.date, cfg.rebalance, cfg.rebalanceDay ?? 1, holidays)
+  const execLagDays = Math.max(0, Math.round(cfg.execLagDays ?? 1))
+  const swapLagDays = cfg.swapExecNext === false ? 0 : 1
 
   // ── 動能換股監看：誰會被換掉、挑戰者要贏多少、最快哪天換得動 ──────────────
   const dir = factorBetterWhen(cfg) === 'high' ? 1 : -1
@@ -523,8 +539,9 @@ export function buildOperatorReport(
   const earliestSwapDate = outgoing.length
     ? minHoldReady
       ? next
-      : nextTradingDay(
+      : addTradingDays(
           outgoing.map((h) => h.minHoldUntil).reduce((a, b) => (a > b ? a : b)),
+          swapLagDays,
           holidays,
         )
     : null
@@ -547,7 +564,17 @@ export function buildOperatorReport(
   // ── 明天到底要幹嘛 ────────────────────────────────────────────────────
   const phrase = actionPhrase(actions)
   const toRebal = tradingDaysBetween(lastRow.date, nextRebal, holidays)
-  let verdict: Verdict
+  // 換股成交日照策略設定（lag 0 = 訊號日當天收盤成交，與回測引擎一致）
+  const swapTradeDate = addTradingDays(
+    lastRow.date,
+    isRebalDay ? execLagDays : swapLagDays,
+    holidays,
+  )
+  const dayText = (d: string) => (d === lastRow.date ? `${mmdd(d)}（今天收盤）` : mmdd(d))
+  const swapDay = dayText(swapTradeDate)
+  // 停損：stopExecNext=false → 觸發當天收盤出場；轉空清倉（immediate）→ 轉空當天收盤（同引擎）
+  const stopTradeDate = plan.strategy.stopExecNext ? next : lastRow.date
+  let verdict: Omit<Verdict, 'tradeDate'> & { tradeDate?: string }
   if (!started) {
     verdict = {
       kind: 'not-started',
@@ -559,16 +586,21 @@ export function buildOperatorReport(
     verdict = {
       kind: 'stop',
       act: true,
-      headline: `${mmdd(next)} 要停損賣出：${stopActionsNow
+      headline: `${dayText(stopTradeDate)} 要停損賣出：${stopActionsNow
         .map((s) => `${s.code} ${s.name}`.trim())
         .join('、')}`,
-      detail: '停損不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
+      detail:
+        stopTradeDate === lastRow.date
+          ? '停損不等換股日，策略設定觸發當天收盤出場（盤中價是暫定值，以收盤為準）。賣掉後持有現金，直到下一個換股日再依排名進場。'
+          : '停損不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
+      tradeDate: stopTradeDate,
     }
   } else if (regime === 'bear' && plan.strategy.regimeExit === 'immediate' && holdings.length > 0) {
     verdict = {
       kind: 'bear-exit',
       act: true,
-      headline: `${mmdd(next)} 清空持股（大盤轉空頭）`,
+      headline: `${dayText(lastRow.date)} 清空持股（大盤轉空頭）`,
+      tradeDate: lastRow.date,
       detail: bearInverse
         ? '依策略：把持股換成元大台灣50反1（00632R），等轉多頭再換回來。'
         : `依策略：全部賣掉抱現金，等換股日（${nextRebal}）且大盤轉多再進場。`,
@@ -587,14 +619,19 @@ export function buildOperatorReport(
       ? {
           kind,
           act: true,
-          headline: `${mmdd(next)} 要換股：${phrase}`,
-          detail: `${why}（依 ${lastRow.date} 的排名）。收盤前後下單，盡量以收盤價成交。`,
+          headline: `${swapDay} 要換股：${phrase}`,
+          detail:
+            swapTradeDate === lastRow.date
+              ? `${why}（依 ${lastRow.date} 的排名）。策略設定訊號日當天成交：今天收盤前下單；盤中排名是暫定值，收盤可能變。`
+              : `${why}（依 ${lastRow.date} 的排名）。收盤前後下單，盡量以收盤價成交。`,
+          tradeDate: swapTradeDate,
         }
       : {
           kind,
           act: false,
-          headline: `${mmdd(next)} 不用動作`,
+          headline: `${swapDay} 不用動作`,
           detail: `${why}，但重新排名後名單沒變 —— 手上這幾檔續抱就好。`,
+          tradeDate: swapTradeDate,
         }
   } else {
     verdict = {
@@ -629,6 +666,7 @@ export function buildOperatorReport(
     factorBoard,
     nextTradingDay: next,
     nextRebalanceDate: nextRebal,
+    rebalanceTradeDate: addTradingDays(nextRebal, execLagDays, holidays),
     tradingDaysToRebalance: toRebal,
     bearInverse,
     targets,
@@ -636,7 +674,23 @@ export function buildOperatorReport(
     actions,
     stopActionsNow,
     swapWatch,
-    verdict,
+    verdict: { ...verdict, tradeDate: verdict.tradeDate ?? next },
+    timeline: buildTimeline({
+      asOfDate: lastRow.date,
+      holidays,
+      rebalance: cfg.rebalance,
+      rebalanceDay: cfg.rebalanceDay ?? 1,
+      execLagDays,
+      swapEnabled: swapWatch.enabled,
+      minHoldDays,
+      swapLagDays,
+      holdings: holdings.map((h) => ({
+        code: h.code,
+        name: h.name,
+        entryDate: h.entryDate,
+        inTargets: h.inTargets,
+      })),
+    }),
     totalValue: valued.length ? valued.reduce((a, b) => a + b, 0) : null,
   }
 }

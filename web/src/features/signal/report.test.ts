@@ -456,3 +456,104 @@ describe('報價覆寫與暫定資料', () => {
     expect(r.provisionalDate).toBe('2026-01-30')
   })
 })
+
+// 下單日照策略設定走，不寫死「明天」（與 engine 的 execLagDays / swapExecNext 一致）
+describe('verdict.tradeDate', () => {
+  const rebalPlan = (execLagDays: number) =>
+    plan({
+      strategy: { rebalance: 'M', rebalanceDay: 28, execLagDays },
+      holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-27' }],
+    })
+
+  it('排程換股 execLagDays=1 → 下一個交易日', () => {
+    const r = buildOperatorReport(history(28), [], rebalPlan(1), names)!
+    expect(r.verdict.kind).toBe('rebalance')
+    expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
+    expect(r.verdict.headline).not.toContain('今天收盤')
+  })
+
+  it('排程換股 execLagDays=0 → 今天收盤', () => {
+    const r = buildOperatorReport(history(28), [], rebalPlan(0), names)!
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+    expect(r.verdict.headline).toContain('今天收盤')
+  })
+
+  it('動能換股 swapExecNext=false → 今天收盤', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: {
+          rebalance: 'M',
+          rebalanceDay: 25,
+          topN: 1,
+          swapOnBetter: true,
+          swapMargin: 15,
+          swapMinHoldDays: 10,
+          swapExecNext: false,
+        },
+        holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-05' }],
+      }),
+      names,
+    )!
+    expect(r.verdict.kind).toBe('swap')
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+  })
+
+  it('沒事的日子 → 下一個交易日', () => {
+    const r = buildOperatorReport(history(10), [], plan(), names)!
+    expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
+  })
+})
+
+// 停損 / 轉空清倉的出場日（與 engine：stopExecNext=false 當天收盤、immediate 轉空當天收盤）
+describe('verdict.tradeDate：停損與轉空', () => {
+  const stopPlan = (stopExecNext: boolean) =>
+    plan({
+      strategy: {
+        rebalance: 'M',
+        rebalanceDay: 25,
+        topN: 1,
+        stopType: 'fixed',
+        stopPct: 10,
+        stopExecNext,
+      },
+      holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+    })
+
+  it('stopExecNext=false → 觸發當天收盤出場', () => {
+    const r = buildOperatorReport(history(30), [], stopPlan(false), names)!
+    expect(r.verdict.kind).toBe('stop')
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+    expect(r.verdict.headline).toContain('今天收盤')
+  })
+
+  it('stopExecNext=true → 下一個交易日出場', () => {
+    const r = buildOperatorReport(history(30), [], stopPlan(true), names)!
+    expect(r.verdict.kind).toBe('stop')
+    expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
+    expect(r.verdict.headline).not.toContain('今天收盤')
+  })
+
+  it('regimeExit=immediate 轉空 → 當天收盤清空', () => {
+    const h = history(10)
+    const bl = h.map((row, i) => ({ date: row.date, twiiTR: i < 5 ? 100 : 100 - i * 3 }))
+    const r = buildOperatorReport(
+      h,
+      bl,
+      plan({
+        strategy: {
+          rebalance: 'M',
+          rebalanceDay: 25,
+          regime: 'ma',
+          regimeDays: 3,
+          regimeExit: 'immediate',
+        },
+        holdings: [{ code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-02' }],
+      }),
+      names,
+    )!
+    expect(r.verdict.kind).toBe('bear-exit')
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+  })
+})

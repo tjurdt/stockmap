@@ -24,6 +24,7 @@ import { holdingsOf, toPlanJson, useOperatorPlan } from '../../lib/plan'
 import { decodeParams } from '../backtest/strategyParams'
 import { buildOperatorReport } from '../signal/report'
 import { ReportView } from '../signal/ReportView'
+import { DateTimeline } from './DateTimeline'
 import { HoldingsPanel } from './HoldingsPanel'
 import { PlanSettings } from './PlanSettings'
 import styles from './planner.module.css'
@@ -113,6 +114,8 @@ export function PlannerPage() {
         <HoldingsPanel report={report} factor={factor} />
 
         <SwapWatchPanel report={report} factor={factor} />
+
+        <DateTimeline report={report} />
 
         <div className={styles.card}>
           <h3>
