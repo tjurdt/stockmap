@@ -162,7 +162,8 @@ export interface Verdict {
   detail: string
   /**
    * 這次要下單的日期：排程換股 = asOfDate + execLagDays、動能換股 = asOfDate + (swapExecNext ? 1 : 0)
-   * 個交易日，其餘 = 下一個交易日。等於 asOfDate 時代表「今天收盤就要成交」。
+   * 個交易日，停損 = stopExecNext ? 下一個交易日 : asOfDate，轉空清倉 = asOfDate，
+   * 其餘 = 下一個交易日。等於 asOfDate 時代表「今天收盤就要成交」。
    */
   tradeDate: string
 }
@@ -569,8 +570,10 @@ export function buildOperatorReport(
     isRebalDay ? execLagDays : swapLagDays,
     holidays,
   )
-  const swapDay =
-    swapTradeDate === lastRow.date ? `${mmdd(swapTradeDate)}（今天收盤）` : mmdd(swapTradeDate)
+  const dayText = (d: string) => (d === lastRow.date ? `${mmdd(d)}（今天收盤）` : mmdd(d))
+  const swapDay = dayText(swapTradeDate)
+  // 停損：stopExecNext=false → 觸發當天收盤出場；轉空清倉（immediate）→ 轉空當天收盤（同引擎）
+  const stopTradeDate = plan.strategy.stopExecNext ? next : lastRow.date
   let verdict: Omit<Verdict, 'tradeDate'> & { tradeDate?: string }
   if (!started) {
     verdict = {
@@ -583,16 +586,21 @@ export function buildOperatorReport(
     verdict = {
       kind: 'stop',
       act: true,
-      headline: `${mmdd(next)} 要停損賣出：${stopActionsNow
+      headline: `${dayText(stopTradeDate)} 要停損賣出：${stopActionsNow
         .map((s) => `${s.code} ${s.name}`.trim())
         .join('、')}`,
-      detail: '停損不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
+      detail:
+        stopTradeDate === lastRow.date
+          ? '停損不等換股日，策略設定觸發當天收盤出場（盤中價是暫定值，以收盤為準）。賣掉後持有現金，直到下一個換股日再依排名進場。'
+          : '停損不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
+      tradeDate: stopTradeDate,
     }
   } else if (regime === 'bear' && plan.strategy.regimeExit === 'immediate' && holdings.length > 0) {
     verdict = {
       kind: 'bear-exit',
       act: true,
-      headline: `${mmdd(next)} 清空持股（大盤轉空頭）`,
+      headline: `${dayText(lastRow.date)} 清空持股（大盤轉空頭）`,
+      tradeDate: lastRow.date,
       detail: bearInverse
         ? '依策略：把持股換成元大台灣50反1（00632R），等轉多頭再換回來。'
         : `依策略：全部賣掉抱現金，等換股日（${nextRebal}）且大盤轉多再進場。`,

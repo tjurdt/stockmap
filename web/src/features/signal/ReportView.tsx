@@ -82,7 +82,11 @@ export function ReportView({ report, factor }: { report: OperatorReport; factor:
             {report.stopActionsNow.map((s) => (
               <li key={s.code}>
                 <span className={styles.sell}>停損</span> {s.code} {s.name}　已跌破停損（
-                {pct(s.dropPct)}）→ 不用等換股日，今天/明天出場、持有現金至下次再平衡
+                {pct(s.dropPct)}）→ 不用等換股日，
+                {report.verdict.kind === 'stop' && report.verdict.tradeDate === report.asOfDate
+                  ? '今天收盤出場'
+                  : '下一個交易日出場'}
+                、持有現金至下次再平衡
               </li>
             ))}
           </ul>

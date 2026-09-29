@@ -505,3 +505,55 @@ describe('verdict.tradeDate', () => {
     expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
   })
 })
+
+// 停損 / 轉空清倉的出場日（與 engine：stopExecNext=false 當天收盤、immediate 轉空當天收盤）
+describe('verdict.tradeDate：停損與轉空', () => {
+  const stopPlan = (stopExecNext: boolean) =>
+    plan({
+      strategy: {
+        rebalance: 'M',
+        rebalanceDay: 25,
+        topN: 1,
+        stopType: 'fixed',
+        stopPct: 10,
+        stopExecNext,
+      },
+      holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-01' }],
+    })
+
+  it('stopExecNext=false → 觸發當天收盤出場', () => {
+    const r = buildOperatorReport(history(30), [], stopPlan(false), names)!
+    expect(r.verdict.kind).toBe('stop')
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+    expect(r.verdict.headline).toContain('今天收盤')
+  })
+
+  it('stopExecNext=true → 下一個交易日出場', () => {
+    const r = buildOperatorReport(history(30), [], stopPlan(true), names)!
+    expect(r.verdict.kind).toBe('stop')
+    expect(r.verdict.tradeDate).toBe(r.nextTradingDay)
+    expect(r.verdict.headline).not.toContain('今天收盤')
+  })
+
+  it('regimeExit=immediate 轉空 → 當天收盤清空', () => {
+    const h = history(10)
+    const bl = h.map((row, i) => ({ date: row.date, twiiTR: i < 5 ? 100 : 100 - i * 3 }))
+    const r = buildOperatorReport(
+      h,
+      bl,
+      plan({
+        strategy: {
+          rebalance: 'M',
+          rebalanceDay: 25,
+          regime: 'ma',
+          regimeDays: 3,
+          regimeExit: 'immediate',
+        },
+        holdings: [{ code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-02' }],
+      }),
+      names,
+    )!
+    expect(r.verdict.kind).toBe('bear-exit')
+    expect(r.verdict.tradeDate).toBe(r.asOfDate)
+  })
+})
