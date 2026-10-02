@@ -1,6 +1,6 @@
 {
   "$comment": "台股市值前 60 大 — 由 twse_pipeline.universe_rank 每交易日重排，勿手改。前端顯示前 displayCount 檔（snapshot 另依當日市值重排）；其餘供回測選股池。sharesOutstandingM = 已發行普通股數（百萬股）。",
-  "rankedAt": "2026-10-01",
+  "rankedAt": "2026-10-02",
   "displayCount": 20,
   "constituents": [
     {
@@ -34,14 +34,14 @@
       "sharesOutstandingM": 14007.365
     },
     {
-      "code": "1303",
-      "name": "南亞",
-      "sharesOutstandingM": 7930.822
-    },
-    {
       "code": "2303",
       "name": "聯電",
       "sharesOutstandingM": 12570.094
+    },
+    {
+      "code": "1303",
+      "name": "南亞",
+      "sharesOutstandingM": 7930.822
     },
     {
       "code": "3037",
@@ -64,24 +64,19 @@
       "sharesOutstandingM": 14669.21
     },
     {
-      "code": "2382",
-      "name": "廣達",
-      "sharesOutstandingM": 4107.627
-    },
-    {
       "code": "3017",
       "name": "奇鋐",
       "sharesOutstandingM": 392.67
     },
     {
+      "code": "2382",
+      "name": "廣達",
+      "sharesOutstandingM": 4107.627
+    },
+    {
       "code": "2891",
       "name": "中信金",
       "sharesOutstandingM": 19675.933
-    },
-    {
-      "code": "2059",
-      "name": "川湖",
-      "sharesOutstandingM": 95.297
     },
     {
       "code": "2327",
@@ -92,6 +87,16 @@
       "code": "2412",
       "name": "中華電",
       "sharesOutstandingM": 7757.447
+    },
+    {
+      "code": "2059",
+      "name": "川湖",
+      "sharesOutstandingM": 95.297
+    },
+    {
+      "code": "2345",
+      "name": "智邦",
+      "sharesOutstandingM": 561.118
     },
     {
       "code": "3443",
@@ -109,11 +114,6 @@
       "sharesOutstandingM": 147.204
     },
     {
-      "code": "2345",
-      "name": "智邦",
-      "sharesOutstandingM": 561.118
-    },
-    {
       "code": "7769",
       "name": "鴻勁",
       "sharesOutstandingM": 179.93
@@ -122,6 +122,11 @@
       "code": "2885",
       "name": "元大金",
       "sharesOutstandingM": 13864.396
+    },
+    {
+      "code": "8046",
+      "name": "南電",
+      "sharesOutstandingM": 646.165
     },
     {
       "code": "6505",
@@ -134,9 +139,9 @@
       "sharesOutstandingM": 425.246
     },
     {
-      "code": "8046",
-      "name": "南電",
-      "sharesOutstandingM": 646.165
+      "code": "3008",
+      "name": "大立光",
+      "sharesOutstandingM": 130.798
     },
     {
       "code": "2344",
@@ -149,11 +154,6 @@
       "sharesOutstandingM": 17723.51
     },
     {
-      "code": "3008",
-      "name": "大立光",
-      "sharesOutstandingM": 130.798
-    },
-    {
       "code": "2886",
       "name": "兆豐金",
       "sharesOutstandingM": 14833.378
@@ -164,19 +164,14 @@
       "sharesOutstandingM": 742.76
     },
     {
-      "code": "2883",
-      "name": "凱基金",
-      "sharesOutstandingM": 16974.612
+      "code": "2301",
+      "name": "光寶科",
+      "sharesOutstandingM": 2316.108
     },
     {
       "code": "2890",
       "name": "永豐金",
       "sharesOutstandingM": 14782.169
-    },
-    {
-      "code": "2301",
-      "name": "光寶科",
-      "sharesOutstandingM": 2316.108
     },
     {
       "code": "2880",
@@ -187,6 +182,11 @@
       "code": "2395",
       "name": "研華",
       "sharesOutstandingM": 869.046
+    },
+    {
+      "code": "2883",
+      "name": "凱基金",
+      "sharesOutstandingM": 16974.612
     },
     {
       "code": "3231",
@@ -209,6 +209,11 @@
       "sharesOutstandingM": 14379.469
     },
     {
+      "code": "3189",
+      "name": "景碩",
+      "sharesOutstandingM": 526.91
+    },
+    {
       "code": "2603",
       "name": "長榮",
       "sharesOutstandingM": 2165.043
@@ -224,19 +229,9 @@
       "sharesOutstandingM": 422.435
     },
     {
-      "code": "3189",
-      "name": "景碩",
-      "sharesOutstandingM": 526.91
-    },
-    {
       "code": "3045",
       "name": "台灣大",
       "sharesOutstandingM": 3723.431
-    },
-    {
-      "code": "3481",
-      "name": "群創",
-      "sharesOutstandingM": 7989.197
     },
     {
       "code": "1301",
@@ -252,6 +247,11 @@
       "code": "5880",
       "name": "合庫金",
       "sharesOutstandingM": 16072.96
+    },
+    {
+      "code": "3481",
+      "name": "群創",
+      "sharesOutstandingM": 7989.197
     },
     {
       "code": "1326",
@@ -284,14 +284,14 @@
       "sharesOutstandingM": 4712.081
     },
     {
-      "code": "2801",
-      "name": "彰銀",
-      "sharesOutstandingM": 12060.197
-    },
-    {
       "code": "3034",
       "name": "聯詠",
       "sharesOutstandingM": 608.511
+    },
+    {
+      "code": "2801",
+      "name": "彰銀",
+      "sharesOutstandingM": 12060.197
     },
     {
       "code": "3661",
