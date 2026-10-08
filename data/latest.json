@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-10-08",
- "generatedAt": "2026-10-08T20:02:58+08:00",
+ "generatedAt": "2026-10-08T23:47:44+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -220,7 +220,7 @@
    "name": "國巨",
    "close": 635.0,
    "chgPct": -1.8547,
-   "mcap": 13072.94,
+   "mcap": 13100.86,
    "value": 299.615,
    "pe": 43.57,
    "pb": 7.52,
@@ -846,5 +846,5 @@
    "mom121": 51.316
   }
  ],
- "universeRankedAt": "2026-10-07"
+ "universeRankedAt": "2026-10-08"
 }
