@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-10-19",
- "generatedAt": "2026-10-19T18:43:56+08:00",
+ "generatedAt": "2026-10-19T23:47:37+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -766,7 +766,7 @@
    "name": "聯詠",
    "close": 585.0,
    "chgPct": 1.3865,
-   "mcap": 3559.79,
+   "mcap": 3577.34,
    "value": 26.5433,
    "pe": 20.13,
    "pb": 5.09,
@@ -846,5 +846,5 @@
    "mom121": 157.83
   }
  ],
- "universeRankedAt": "2026-10-16"
+ "universeRankedAt": "2026-10-19"
 }
