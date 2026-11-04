@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-04",
- "generatedAt": "2026-11-04T20:58:40+08:00",
+ "generatedAt": "2026-11-05T00:28:25+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -584,7 +584,7 @@
    "name": "光寶科",
    "close": 226.0,
    "chgPct": -0.8772,
-   "mcap": 5234.4,
+   "mcap": 5144.0,
    "value": 34.0593,
    "pe": 23.31,
    "pb": 5.31,
@@ -846,5 +846,5 @@
    "mom121": 14.449
   }
  ],
- "universeRankedAt": "2026-11-03"
+ "universeRankedAt": "2026-11-05"
 }
