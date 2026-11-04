@@ -5,7 +5,7 @@
  * 輸出：一份「到今天為止、我該知道的一切」結構，交給各處各自渲染。
  *
  * 規則優先序（與回測引擎 `engine.runBacktest` 完全一致，改這裡也要改那裡）：
- *   1. 停損觸發 —— 不等換股日，照策略設定的時點出場。
+ *   1. 停損 / 停利觸發 —— 不等換股日，照策略設定的時點出場。
  *   2. 多空過濾 regimeExit='immediate' —— 轉空當天清空。
  *   3. **排程換股日（每月第 N 個交易日 / 每週星期 N）優先於最短持有天數。**
  *      排程日一到就照當日排名整批換，`swapMinHoldDays` 擋不住。
@@ -63,6 +63,9 @@ export interface HoldingRow {
   plPct: number | null
   value: number | null
   stop: StopInfo | null
+  /** 停利線（成本 × (1 + takeProfitPct%)）；沒設 = null */
+  takeProfitPrice: number | null
+  takeProfitHit: boolean
   /** 當前選定因子的值（收盤） */
   factor: number | null
   /** 當前因子在選股池的排名（1 起；不在池中 = null） */
@@ -149,7 +152,7 @@ export interface SwapWatch {
 }
 
 export type VerdictKind =
-  'not-started' | 'entry' | 'stop' | 'bear-exit' | 'rebalance' | 'swap' | 'hold'
+  'not-started' | 'entry' | 'stop' | 'take-profit' | 'bear-exit' | 'rebalance' | 'swap' | 'hold'
 
 /** 「明天到底要幹嘛」—— 網站大字用。 */
 export interface Verdict {
@@ -208,6 +211,8 @@ export interface OperatorReport {
   actions: ActionRow[]
   /** 不必等換股日、今天就該出場的停損 */
   stopActionsNow: { code: string; name: string; dropPct: number }[]
+  /** 不必等換股日、已達停利線要賣的持股 */
+  takeProfitActionsNow: { code: string; name: string; gainPct: number }[]
   swapWatch: SwapWatch
   verdict: Verdict
   /** 日期時間軸（訊號日 / 成交日 / 最短持有）—— 頁面照畫，不自己算 */
@@ -229,10 +234,20 @@ const cfgOf = (plan: OperatorPlan): BacktestConfig => ({ ...plan.strategy, costB
 
 const mmdd = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 
-function strategySummary(plan: OperatorPlan, factorLabelText: string): string {
-  const s = plan.strategy
+/** 因子的顯示名稱（自訂動能窗用「自訂動能 N 日」）。 */
+export function strategyFactorLabel(
+  s: Pick<BacktestConfig, 'factor' | 'momDays' | 'momSkip' | 'customLabel' | 'customFormula'>,
+): string {
+  const custom = (s.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(s.factor)
+  return custom
+    ? `自訂動能 ${s.momDays}${(s.momSkip ?? 0) > 0 ? `-${s.momSkip}` : ''} 日`
+    : factorLabel(s)
+}
+
+/** 一句話講完一組策略（操作計畫與回測頁共用）。 */
+export function strategySummary(s: OperatorPlan['strategy']): string {
   const parts = [
-    `${factorLabelText} 高者佳`,
+    `${strategyFactorLabel(s)} ${factorBetterWhen(s) === 'high' ? '高者佳' : '低者佳'}`,
     `市值前 ${s.poolTopN} 選前 ${s.topN} 檔`,
     s.rebalance === 'M'
       ? `每月第 ${s.rebalanceDay} 個交易日再平衡`
@@ -249,6 +264,9 @@ function strategySummary(plan: OperatorPlan, factorLabelText: string): string {
             ? `跌破 ${s.stopMaDays ?? 20} 日均線停損`
             : `固定停損 ${s.stopPct}%`
     parts.push(s.stopExecNext ? `${label}（隔日出場）` : label)
+  }
+  if (s.takeProfitPct > 0) {
+    parts.push(`停利 ${s.takeProfitPct}%${s.stopExecNext ? '（隔日出場）' : ''}`)
   }
   if (s.swapOnBetter) {
     const marginText =
@@ -301,10 +319,7 @@ export function buildOperatorReport(
   // 自訂動能窗 / 自訂指標：把因子欄位換成重算值，排名一律用這份
   const fRows = withComputedFactors(rows, cfg)
   const fLast = fRows.at(-1)!
-  const customMomWindow = (cfg.momDays ?? 0) > 0 && ['m20', 'm60', 'm121'].includes(cfg.factor)
-  const factorLabelText = customMomWindow
-    ? `自訂動能 ${cfg.momDays}${(cfg.momSkip ?? 0) > 0 ? `-${cfg.momSkip}` : ''} 日`
-    : factorLabel(cfg)
+  const factorLabelText = strategyFactorLabel(cfg)
 
   const regimeMap = regimeByDate(
     [prevRow?.date ?? lastRow.date, lastRow.date],
@@ -374,7 +389,9 @@ export function buildOperatorReport(
   // 上線進場：已過上線日、但還沒建倉 → 今天就是進場日（在建倉前每天都提示）
   const started = lastRow.date >= plan.startDate
   const firstEntryDay = rows.find((r) => r.date >= plan.startDate)?.date ?? plan.startDate
-  const isEntryDay = started && plan.holdings.length === 0 && regime !== 'bear'
+  // 只有「從來沒進場過」才算上線進場；賣光後的空手要等下一個換股日（同回測引擎）
+  const neverEntered = plan.holdings.length === 0 && !plan.trades?.length
+  const isEntryDay = started && neverEntered && regime !== 'bear'
 
   const isSignalDay = isRebalDay || swapSignal || isEntryDay
 
@@ -448,6 +465,7 @@ export function buildOperatorReport(
     return { type, refPrice, stopPrice, peakPrice, pct, hit, room }
   }
 
+  const takeProfitFrac = Math.max(0, plan.strategy.takeProfitPct ?? 0) / 100
   const targetCodes = new Set(targets.map((t) => t.code))
   const minHoldDays = Math.max(0, Math.round(plan.strategy.swapMinHoldDays ?? 0))
 
@@ -464,6 +482,9 @@ export function buildOperatorReport(
       plPct: price != null ? price / h.entryPrice - 1 : null,
       value: price != null ? price * h.shares : null,
       stop: stopOf(h.code, h.entryPrice, h.entryDate),
+      takeProfitPrice: takeProfitFrac > 0 ? h.entryPrice * (1 + takeProfitFrac) : null,
+      takeProfitHit:
+        takeProfitFrac > 0 && price != null && price / h.entryPrice - 1 >= takeProfitFrac,
       factor: factorByCode.get(h.code) ?? factorOf(h.code),
       factorRank: rankOf.get(h.code) ?? null,
       heldDays,
@@ -504,6 +525,10 @@ export function buildOperatorReport(
   const stopActionsNow = holdings
     .filter((h) => h.stop?.hit)
     .map((h) => ({ code: h.code, name: h.name, dropPct: h.stop!.pct }))
+
+  const takeProfitActionsNow = holdings
+    .filter((h) => h.takeProfitHit && !h.stop?.hit)
+    .map((h) => ({ code: h.code, name: h.name, gainPct: h.plPct ?? 0 }))
 
   const bearInverse = regime === 'bear' && plan.strategy.bearHolding === 'inverse'
   const next = nextTradingDay(lastRow.date, holidays)
@@ -595,6 +620,16 @@ export function buildOperatorReport(
           : '停損不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
       tradeDate: stopTradeDate,
     }
+  } else if (takeProfitActionsNow.length > 0) {
+    verdict = {
+      kind: 'take-profit',
+      act: true,
+      headline: `${dayText(stopTradeDate)} 要停利賣出：${takeProfitActionsNow
+        .map((s) => `${s.code} ${s.name}`.trim())
+        .join('、')}`,
+      detail: '已達停利線，不等換股日。賣掉後持有現金，直到下一個換股日再依排名進場。',
+      tradeDate: stopTradeDate,
+    }
   } else if (regime === 'bear' && plan.strategy.regimeExit === 'immediate' && holdings.length > 0) {
     verdict = {
       kind: 'bear-exit',
@@ -655,7 +690,7 @@ export function buildOperatorReport(
     started,
     startDate: plan.startDate,
     factorLabel: factorLabelText,
-    strategySummary: strategySummary(plan, factorLabelText),
+    strategySummary: strategySummary(plan.strategy),
     regime,
     regimeChangedFrom,
     isSignalDay,
@@ -673,6 +708,7 @@ export function buildOperatorReport(
     holdings,
     actions,
     stopActionsNow,
+    takeProfitActionsNow,
     swapWatch,
     verdict: { ...verdict, tradeDate: verdict.tradeDate ?? next },
     timeline: buildTimeline({

@@ -30,6 +30,7 @@ describe('strategyParams', () => {
       regimeDays: 120,
       regimeExit: 'immediate' as const,
       bearHolding: 'inverse' as const,
+      takeProfitPct: 30,
     }
     expect(decodeParams(encodeParams(p))).toEqual(p)
   })

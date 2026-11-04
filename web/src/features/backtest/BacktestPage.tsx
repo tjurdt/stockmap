@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { CustomIndicatorEditor } from '../../components/CustomIndicatorEditor'
 import { InfoHint } from '../../components/InfoHint'
 import { Layout } from '../../components/Layout'
-import { CycleField } from '../../components/controls/CycleField'
-import { Section } from '../../components/controls/Section'
-import { StepperField } from '../../components/controls/StepperField'
-import { SubGroup } from '../../components/controls/SubGroup'
 import { useAsync } from '../../hooks/useAsync'
 import { useLiveMarket } from '../../hooks/useLiveMarket'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
@@ -15,53 +10,37 @@ import { useSnapshot } from '../../hooks/useSnapshot'
 import { alignNormalized, loadBaselines } from '../../lib/baselines'
 import { loadAllFactorHistory } from '../../lib/history'
 import { baselineStyle, strategyStyle } from '../../lib/palette'
-import { factorFmt, factorLabel, METRICS } from '../../lib/metrics'
-import { rollingWindowReturns, summarizeOutcomes, summarizeRolling } from '../../lib/rolling'
+import { factorLabel } from '../../lib/metrics'
+import { readStoredPlan, useOperatorPlan } from '../../lib/plan'
+import { strategySummary } from '../signal/report'
+import { BacktestPanel } from './BacktestPanel'
 import { CompareTable, type CompareRow } from './CompareTable'
-import { useLockedStrategies } from './compare'
-import { distributionOutcomes, type DistMode } from './distribution'
-import {
-  BACKTEST_FACTORS,
-  MOMENTUM_KEYS,
-  poolAtDate,
-  runBacktest,
-  type BacktestConfig,
-} from './engine'
+import { sameParams, useLockedStrategies } from './compare'
+import { DistributionTab } from './DistributionTab'
+import type { DistMode } from './distribution'
+import { poolAtDate, runBacktest, type BacktestConfig } from './engine'
 import { EquityChart } from './EquityChart'
 import { LockedBar } from './LockedBar'
 import { MethodNotes } from './MethodNotes'
-import { OutcomeHistogram } from './OutcomeHistogram'
-import { readBacktestPrefs, writeBacktestPrefs } from './prefs'
-import { RollingChart } from './RollingChart'
-import { decodeParams, encodeParams, type StrategyParams } from './strategyParams'
+import { costsOf, COST_REV, initialStrategy, readBacktestPrefs, writeBacktestPrefs } from './prefs'
+import { cls, pct, Stat } from './Stat'
+import { toStrategyParams, type StrategyParams } from './strategyParams'
 import styles from './backtest.module.css'
 
-const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
-const cls = (v: number) => (v > 0 ? styles.pos : v < 0 ? styles.neg : undefined)
-
-/** 目前策略固定第一色；鎖定的策略用 1..4。 */
-
-const FACTOR_OPTS = [
-  ...BACKTEST_FACTORS.map((k) => [k, METRICS[k].label] as const),
-  ['custom', '🧩 自訂指標'] as const,
+type ResultTab = 'perf' | 'dist' | 'hold' | 'notes'
+const TABS: [ResultTab, string][] = [
+  ['perf', '績效'],
+  ['dist', '報酬分布'],
+  ['hold', '持股明細'],
+  ['notes', '方法說明'],
 ]
-const WEEKDAY_OPTS = [
-  [1, '週一'],
-  [2, '週二'],
-  [3, '週三'],
-  [4, '週四'],
-  [5, '週五'],
-] as const
-const WINDOW_OPTS = [
-  [6, '6 個月'],
-  [12, '12 個月'],
-  [24, '24 個月'],
-] as const
 
 function strategyLabel(p: StrategyParams): string {
   return `${factorLabel(p).replace(/\s*\(.*\)/, '')}·前${p.topN}·${
     p.rebalance === 'M' ? '月' : '週'
-  }${p.stopType !== 'none' ? `·停${p.stopPct}` : ''}${p.regime !== 'off' ? '·多空' : ''}`
+  }${p.stopType !== 'none' ? `·停${p.stopPct}` : ''}${p.takeProfitPct > 0 ? `·利${p.takeProfitPct}` : ''}${
+    p.regime !== 'off' ? '·多空' : ''
+  }`
 }
 
 export function BacktestPage() {
@@ -71,23 +50,25 @@ export function BacktestPage() {
   const navigate = useNavigate()
   const search = useLocation().search
   const stored = useMemo(() => readBacktestPrefs(), [])
-  const [cfg, setCfg] = useState<BacktestConfig>(() => {
-    const base = { costBps: 30, feeBps: 4, taxBps: 30 }
-    if (search) return { ...base, ...decodeParams(search) }
-    if (stored?.params)
-      return {
-        ...base,
-        ...stored.params,
-        feeBps: stored.feeBps ?? base.feeBps,
-        taxBps: stored.taxBps ?? base.taxBps,
-      }
-    return { ...base, ...decodeParams('') }
-  })
+  const [plan, savePlan] = useOperatorPlan()
+  const [hasPlan, setHasPlan] = useState(() => readStoredPlan() != null)
+  const [cfg, setCfg] = useState<BacktestConfig>(() => ({
+    costBps: 0,
+    ...costsOf(stored),
+    ...initialStrategy(search, stored, hasPlan ? plan.strategy : null),
+  }))
   const patch = (p: Partial<BacktestConfig>) => setCfg((c) => ({ ...c, ...p }))
+  // 分享連結的 query 只在開頁時用一次：留在網址上的話，重新整理 / 上一頁都會蓋掉之後的調整
+  useEffect(() => {
+    if (search) navigate('/backtest', { replace: true })
+  }, [search, navigate])
+  const [tab, setTab] = useState<ResultTab>('perf')
   const [refs, setRefs] = useState(
     () => stored?.refs ?? { twii: true, e0050: true, e00632r: false },
   )
   const [windowMonths, setWindowMonths] = useState(() => stored?.windowMonths ?? 12)
+  const [distMonths, setDistMonths] = useState(() => stored?.distMonths ?? 12)
+  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'aligned')
   const { locked, add, remove, clear } = useLockedStrategies()
   const isMobile = useMediaQuery('(max-width: 820px)')
 
@@ -145,47 +126,15 @@ export function BacktestPage() {
     () =>
       history.length > 1
         ? locked.map((l) =>
-            runBacktest(history, { ...l.params, costBps: cfg.costBps, ...range }, blData),
+            runBacktest(
+              history,
+              { ...l.params, costBps: 0, feeBps: cfg.feeBps, taxBps: cfg.taxBps, ...range },
+              blData,
+            ),
           )
         : [],
-    [history, locked, range, blData, cfg.costBps],
+    [history, locked, range, blData, cfg.feeBps, cfg.taxBps],
   )
-
-  // 滾動視窗：用完整歷史（不受區間選擇影響）
-  const fullResult = useMemo(
-    () => (history.length > 1 ? runBacktest(history, cfg, blData) : null),
-    [history, cfg, blData],
-  )
-  const rolling = useMemo(
-    () =>
-      fullResult
-        ? rollingWindowReturns(
-            fullResult.dates,
-            fullResult.equity,
-            fullResult.benchmark,
-            windowMonths,
-          )
-        : [],
-    [fullResult, windowMonths],
-  )
-  const rollSummary = useMemo(() => summarizeRolling(rolling), [rolling])
-
-  // 報酬分布：逐交易日起點、抱滿 N 個月的所有結果（用完整歷史）
-  const [distMonths, setDistMonths] = useState(() => stored?.distMonths ?? 12)
-  const [distMode, setDistMode] = useState<DistMode>(() => stored?.distMode ?? 'aligned')
-  // aligned / all 掃過所有換股日 → 結果不受 rebalanceDay 影響，memo key 拿掉它避免白重算
-  const distKey = useMemo(() => {
-    const c: Partial<BacktestConfig> = { ...cfg }
-    if (distMode !== 'follow') delete c.rebalanceDay
-    return `${JSON.stringify(c)}|${distMonths}|${distMode}`
-  }, [cfg, distMonths, distMode])
-  const outcomes = useMemo(
-    () =>
-      history.length > 1 ? distributionOutcomes(history, cfg, blData, distMonths, distMode) : [],
-    // distKey 已涵蓋 cfg / distMonths / distMode
-    [history, blData, distKey],
-  )
-  const distSummary = useMemo(() => summarizeOutcomes(outcomes), [outcomes])
 
   const span = result?.dates.length ? `${result.dates[0]} ~ ${result.dates.at(-1)}` : ''
 
@@ -216,44 +165,24 @@ export function BacktestPage() {
   }, [result, cursor, history, cfg.poolTopN])
 
   const poolShown = Math.min(cfg.poolTopN ?? 0, universeSize || (cfg.poolTopN ?? 0))
-  const stopType = cfg.stopType ?? 'none'
+  const params = useMemo(() => toStrategyParams(cfg), [cfg])
+  const isPlan = hasPlan && sameParams(params, plan.strategy)
 
-  const asParams = (c: BacktestConfig): StrategyParams => ({
-    factor: c.factor,
-    momDays: c.momDays ?? 0,
-    momSkip: c.momSkip ?? 0,
-    customFormula: c.customFormula ?? '',
-    customLabel: c.customLabel ?? '',
-    customBetterWhen: c.customBetterWhen ?? 'high',
-    topN: c.topN,
-    poolTopN: c.poolTopN ?? 50,
-    rebalance: c.rebalance,
-    rebalanceDay: c.rebalanceDay ?? 1,
-    weighting: c.weighting,
-    execLagDays: c.execLagDays ?? 1,
-    stopType: c.stopType ?? 'none',
-    stopPct: c.stopPct ?? 20,
-    stopMaDays: c.stopMaDays ?? 20,
-    stopExecNext: c.stopExecNext ?? false,
-    swapOnBetter: c.swapOnBetter ?? false,
-    swapMargin: c.swapMargin ?? 15,
-    swapMarginMode: c.swapMarginMode ?? 'relative',
-    swapMinHoldDays: c.swapMinHoldDays ?? 10,
-    swapExecNext: c.swapExecNext ?? true,
-    regime: c.regime ?? 'off',
-    regimeDays: c.regimeDays ?? 200,
-    regimeExit: c.regimeExit ?? 'rebalance',
-    bearHolding: c.bearHolding ?? 'cash',
-  })
-  const paramsQuery = useMemo(() => encodeParams(asParams(cfg)), [cfg])
+  const applyToPlan = () => {
+    if (!window.confirm('把操作計畫換成這組設定？之後的買賣訊號會跟著變。')) return
+    savePlan({ ...plan, strategy: params })
+    setHasPlan(true)
+    navigate('/plan')
+  }
 
   // 記憶設定到這台裝置（startMonth 還沒定好前不寫）
   useEffect(() => {
     if (!startMonth) return
     writeBacktestPrefs({
-      params: asParams(cfg),
-      feeBps: cfg.feeBps ?? 4,
-      taxBps: cfg.taxBps ?? 30,
+      params,
+      feeBps: cfg.feeBps ?? 0,
+      taxBps: cfg.taxBps ?? 0,
+      costRev: COST_REV,
       startMonth,
       endMonth,
       refs,
@@ -261,7 +190,7 @@ export function BacktestPage() {
       distMode,
       windowMonths,
     })
-  }, [cfg, startMonth, endMonth, refs, distMonths, distMode, windowMonths])
+  }, [cfg, params, startMonth, endMonth, refs, distMonths, distMode, windowMonths])
 
   const series = useMemo(() => {
     type S = {
@@ -316,341 +245,8 @@ export function BacktestPage() {
     ]
   }, [result, lockedResults, locked, cfg.regime])
 
-  const panel = (
-    <>
-      <Section title="回測區間" tone="range" defaultOpen>
-        <div className={styles.quick}>
-          {(
-            [
-              ['1', '近 1 年'],
-              ['3', '近 3 年'],
-              ['all', '全部'],
-            ] as const
-          ).map(([v, label]) => (
-            <button key={v} onClick={() => quickRange(v === 'all' ? 'all' : Number(v))}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className={styles.monthRow}>
-          <input
-            type="month"
-            value={startMonth}
-            min={months[0]}
-            max={endMonth || months.at(-1)}
-            onChange={(e) => setStartMonth(e.target.value)}
-          />
-          <span>~</span>
-          <input
-            type="month"
-            value={endMonth}
-            min={startMonth || months[0]}
-            max={months.at(-1)}
-            onChange={(e) => setEndMonth(e.target.value)}
-          />
-        </div>
-      </Section>
-
-      <Section title="選股" tone="pick" defaultOpen>
-        <StepperField
-          label={`選股池 前 ${poolShown} 大`}
-          value={cfg.poolTopN ?? 50}
-          min={10}
-          max={80}
-          step={5}
-          onChange={(v) => patch({ poolTopN: v })}
-        />
-        <CycleField
-          label="排名因子"
-          value={cfg.factor}
-          options={FACTOR_OPTS}
-          onChange={(v) => patch({ factor: v })}
-        />
-        {MOMENTUM_KEYS.has(cfg.factor) && (
-          <SubGroup>
-            <StepperField
-              label="回看天數"
-              value={cfg.momDays ?? 0}
-              min={0}
-              max={300}
-              step={5}
-              onChange={(v) => patch({ momDays: v })}
-              format={(v) => (v === 0 ? '用內建窗' : `${v} 交易日`)}
-            />
-            {(cfg.momDays ?? 0) > 0 && (
-              <StepperField
-                label="跳過近期"
-                value={cfg.momSkip ?? 0}
-                min={0}
-                max={60}
-                step={5}
-                onChange={(v) => patch({ momSkip: v })}
-                format={(v) => `${v} 交易日`}
-              />
-            )}
-          </SubGroup>
-        )}
-        {cfg.factor === 'custom' && (
-          <SubGroup>
-            <CustomIndicatorEditor
-              value={{
-                formula: cfg.customFormula ?? '',
-                label: cfg.customLabel ?? '',
-                betterWhen: cfg.customBetterWhen ?? 'high',
-              }}
-              onChange={(v) =>
-                patch({
-                  customFormula: v.formula,
-                  customLabel: v.label,
-                  customBetterWhen: v.betterWhen,
-                })
-              }
-            />
-          </SubGroup>
-        )}
-        <StepperField
-          label="持股數"
-          value={cfg.topN}
-          min={1}
-          max={10}
-          onChange={(v) => patch({ topN: v })}
-          format={(v) => `前 ${v} 檔`}
-        />
-        <CycleField
-          label="權重"
-          value={cfg.weighting}
-          options={[
-            ['equal', '等權'],
-            ['mcap', '市值權重'],
-          ]}
-          onChange={(v) => patch({ weighting: v })}
-        />
-      </Section>
-
-      <Section title="換股" tone="swap" defaultOpen>
-        <CycleField
-          label="頻率"
-          value={cfg.rebalance}
-          options={[
-            ['W', '每週'],
-            ['M', '每月'],
-          ]}
-          onChange={(v) => patch({ rebalance: v })}
-        />
-        {cfg.rebalance === 'M' ? (
-          <StepperField
-            label="換股時點"
-            value={cfg.rebalanceDay ?? 1}
-            min={1}
-            max={23}
-            onChange={(v) => patch({ rebalanceDay: v })}
-            format={(v) => `每月第 ${v} 個交易日`}
-          />
-        ) : (
-          <CycleField
-            label="換股星期"
-            value={cfg.rebalanceDay ?? 1}
-            options={WEEKDAY_OPTS}
-            onChange={(v) => patch({ rebalanceDay: v })}
-          />
-        )}
-        <CycleField
-          label="成交時點"
-          value={cfg.execLagDays ?? 1}
-          options={[
-            [1, '隔一日'],
-            [0, '訊號日收盤'],
-          ]}
-          onChange={(v) => patch({ execLagDays: v })}
-        />
-        <CycleField
-          label="動能換股"
-          value={cfg.swapOnBetter ? 'on' : 'off'}
-          options={[
-            ['off', '關'],
-            ['on', '開'],
-          ]}
-          onChange={(v) => patch({ swapOnBetter: v === 'on' })}
-        />
-        {cfg.swapOnBetter && (
-          <SubGroup>
-            <CycleField
-              label="門檻類型"
-              value={cfg.swapMarginMode ?? 'relative'}
-              options={[
-                ['relative', '相對 %'],
-                ['absolute', '絕對值'],
-              ]}
-              onChange={(v) => patch({ swapMarginMode: v })}
-            />
-            <StepperField
-              label="換股門檻"
-              value={cfg.swapMargin ?? 15}
-              min={0}
-              max={(cfg.swapMarginMode ?? 'relative') === 'absolute' ? 9999 : 50}
-              step={(cfg.swapMarginMode ?? 'relative') === 'absolute' ? 1 : 5}
-              onChange={(v) => patch({ swapMargin: v })}
-              format={(v) =>
-                (cfg.swapMarginMode ?? 'relative') === 'absolute'
-                  ? `高出 ${factorFmt(cfg.factor)(v)}`
-                  : `高出 ${v}%`
-              }
-            />
-            <p className={styles.sub} style={{ margin: '4px 2px 0' }}>
-              門檻類型是什麼
-              <InfoHint label="門檻類型是什麼">
-                「相對 %」＝比最弱持股的因子值再高 X%（因子接近 0 時門檻會塌縮成幾乎不用贏， 適合
-                PE/PB 這種比例型因子）。「絕對值」＝直接高出 X（因子原始單位，適合已經是 %
-                的動能因子，或自訂指標——單位不是比例、或值接近 0 時用這個比較準）。
-              </InfoHint>
-            </p>
-            <StepperField
-              label="最短持有"
-              value={cfg.swapMinHoldDays ?? 10}
-              min={0}
-              max={60}
-              step={5}
-              onChange={(v) => patch({ swapMinHoldDays: v })}
-              format={(v) => `${v} 交易日`}
-            />
-            <CycleField
-              label="換股成交"
-              value={(cfg.swapExecNext ?? true) ? 'next' : 'close'}
-              options={[
-                ['next', '隔一交易日'],
-                ['close', '訊號日收盤'],
-              ]}
-              onChange={(v) => patch({ swapExecNext: v === 'next' })}
-            />
-          </SubGroup>
-        )}
-      </Section>
-
-      <Section title="風控" tone="risk">
-        <CycleField
-          label="停損"
-          value={stopType}
-          options={[
-            ['none', '關'],
-            ['fixed', '固定'],
-            ['trailing', '移動'],
-            ['daily', '單日跌幅'],
-            ['ma', '跌破均線'],
-          ]}
-          onChange={(v) => patch({ stopType: v })}
-        />
-        {stopType !== 'none' && (
-          <SubGroup>
-            {stopType !== 'ma' && (
-              <StepperField
-                label={
-                  stopType === 'trailing'
-                    ? '停損%（自高點）'
-                    : stopType === 'daily'
-                      ? '單日跌幅%'
-                      : '停損%（自買進）'
-                }
-                value={cfg.stopPct ?? 20}
-                min={2}
-                max={50}
-                onChange={(v) => patch({ stopPct: v })}
-                format={(v) => `${v}%`}
-              />
-            )}
-            {stopType === 'ma' && (
-              <StepperField
-                label="均線天數"
-                value={cfg.stopMaDays ?? 20}
-                min={5}
-                max={120}
-                step={5}
-                onChange={(v) => patch({ stopMaDays: v })}
-                format={(v) => `${v} 日`}
-              />
-            )}
-            <CycleField
-              label="停損成交"
-              value={cfg.stopExecNext ? 'next' : 'close'}
-              options={[
-                ['close', '當日收盤'],
-                ['next', '隔一交易日'],
-              ]}
-              onChange={(v) => patch({ stopExecNext: v === 'next' })}
-            />
-          </SubGroup>
-        )}
-        <CycleField
-          label="多空過濾"
-          value={cfg.regime ?? 'off'}
-          options={[
-            ['off', '關'],
-            ['ma', '均線'],
-            ['mom', '動能'],
-          ]}
-          onChange={(v) => patch({ regime: v })}
-        />
-        {(cfg.regime ?? 'off') !== 'off' && (
-          <SubGroup>
-            <StepperField
-              label="回看天數"
-              value={cfg.regimeDays ?? 200}
-              min={20}
-              max={300}
-              step={10}
-              onChange={(v) => patch({ regimeDays: v })}
-              format={(v) => `${v} 日`}
-            />
-            <CycleField
-              label="轉空反應"
-              value={cfg.regimeExit ?? 'rebalance'}
-              options={[
-                ['rebalance', '換股日才空手'],
-                ['immediate', '轉空立刻清空'],
-              ]}
-              onChange={(v) => patch({ regimeExit: v })}
-            />
-            <CycleField
-              label="空頭時"
-              value={cfg.bearHolding ?? 'cash'}
-              options={[
-                ['cash', '持有現金'],
-                ['inverse', '買台灣50反1'],
-              ]}
-              onChange={(v) => patch({ bearHolding: v })}
-            />
-          </SubGroup>
-        )}
-      </Section>
-
-      <Section title="成本" tone="cost">
-        <StepperField
-          label="手續費"
-          value={cfg.feeBps ?? 4}
-          min={0}
-          max={30}
-          step={1}
-          onChange={(v) => patch({ feeBps: v })}
-          format={(v) => `單邊 ${v} bp`}
-        />
-        <StepperField
-          label="證交稅"
-          value={cfg.taxBps ?? 30}
-          min={0}
-          max={50}
-          step={5}
-          onChange={(v) => patch({ taxBps: v })}
-          format={(v) => `賣出 ${v} bp`}
-        />
-        <p className={styles.sub} style={{ margin: '6px 2px 0' }}>
-          交易損耗怎麼設
-          <InfoHint label="交易損耗怎麼設">
-            手續費 0.1425%／邊，券商折扣後才是實付 —— 例如 2.8 折 ≈ 4 bp／邊。 賣出另課證交稅：個股
-            30 bp、ETF 10 bp。1 bp = 0.01%。
-          </InfoHint>
-        </p>
-      </Section>
-    </>
-  )
+  const twiiIndex = result ? alignNormalized(blData, result.dates, 'twiiTR') : null
+  const twiiReturn = twiiIndex?.at(-1) != null ? twiiIndex.at(-1)! - 1 : null
 
   return (
     <Layout
@@ -662,7 +258,19 @@ export function BacktestPage() {
       <div className={styles.layout}>
         <details className={styles.panelWrap} open={!isMobile}>
           <summary>⚙ 回測設定</summary>
-          <div className={styles.panel}>{panel}</div>
+          <div className={styles.panel}>
+            <BacktestPanel
+              cfg={cfg}
+              patch={patch}
+              months={months}
+              startMonth={startMonth}
+              endMonth={endMonth}
+              setStartMonth={setStartMonth}
+              setEndMonth={setEndMonth}
+              quickRange={quickRange}
+              poolShown={poolShown}
+            />
+          </div>
         </details>
 
         <div className={styles.main}>
@@ -672,17 +280,33 @@ export function BacktestPage() {
 
           {result && view && (
             <>
-              <div className={styles.signalCta}>
-                <button onClick={() => navigate(`/plan?${paramsQuery}`)}>
-                  📋 用這組設定做操作計畫 →
-                </button>
-                <button
-                  className={styles.lockBtn}
-                  disabled={locked.length >= 4}
-                  onClick={() => add(asParams(cfg), strategyLabel(asParams(cfg)))}
-                >
-                  🔒 鎖定比較{locked.length >= 4 ? '（已滿 4）' : ''}
-                </button>
+              <div className={styles.strategyBar}>
+                <p className={styles.strategyText}>{strategySummary(params)}</p>
+                <div className={styles.strategyActions}>
+                  {isPlan ? (
+                    <span className={styles.planBadge}>✓ 這就是你的操作計畫</span>
+                  ) : (
+                    <>
+                      <button className={styles.primaryBtn} onClick={applyToPlan}>
+                        套用到操作計畫
+                      </button>
+                      {hasPlan && (
+                        <button
+                          onClick={() => setCfg((c) => ({ ...c, ...plan.strategy }))}
+                          title="把左邊設定換回操作計畫目前用的那組"
+                        >
+                          載入操作計畫
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <button
+                    disabled={locked.length >= 4}
+                    onClick={() => add(params, strategyLabel(params))}
+                  >
+                    加入比較{locked.length >= 4 ? '（已滿 4）' : ''}
+                  </button>
+                </div>
               </div>
 
               <LockedBar
@@ -692,296 +316,208 @@ export function BacktestPage() {
                 onClear={clear}
               />
 
-              <EquityChart
-                dates={result.dates}
-                series={series}
-                markers={view.markers}
-                regime={cfg.regime !== 'off' ? result.regime : undefined}
-                cursor={cursor}
-                onCursor={setHover}
-                onPin={(i) => setPinned((p) => (p === i ? null : i))}
-              />
-              <p className={styles.sub} style={{ marginTop: 4 }}>
-                {(
-                  [
-                    ['twii', '大盤(報酬)'],
-                    ['e0050', '0050'],
-                    ['e00632r', '台灣50反1'],
-                  ] as const
-                ).map(([k, label]) => (
-                  <label key={k} className={styles.refToggle}>
-                    <input
-                      type="checkbox"
-                      checked={refs[k]}
-                      onChange={(e) => setRefs((r) => ({ ...r, [k]: e.target.checked }))}
-                    />
-                    {label}
-                  </label>
-                ))}
-                　虛線 = 換股成交日。移到曲線看任一天；<b>點一下鎖定</b>
-                {pinned != null ? (
-                  <button className={styles.unpin} onClick={() => setPinned(null)}>
-                    📌 {result.dates[pinned]} ✕
-                  </button>
-                ) : (
-                  '，再點一下解開。'
-                )}
-              </p>
-
               <div className={styles.stats}>
                 <Stat
                   label="總報酬"
                   value={pct(result.metrics.totalReturn)}
                   klass={cls(result.metrics.totalReturn)}
                 />
-                <Stat
-                  label="基準總報酬"
-                  value={pct(result.metrics.benchmarkReturn)}
-                  klass={cls(result.metrics.benchmarkReturn)}
-                />
-                <Stat
-                  label="相對基準"
-                  value={pct(result.metrics.totalReturn - result.metrics.benchmarkReturn)}
-                  klass={cls(result.metrics.totalReturn - result.metrics.benchmarkReturn)}
-                />
+                {twiiReturn != null && (
+                  <Stat label="大盤同期" value={pct(twiiReturn)} klass={cls(twiiReturn)} />
+                )}
                 <Stat
                   label="年化報酬"
                   value={pct(result.metrics.cagr)}
                   klass={cls(result.metrics.cagr)}
                 />
                 <Stat label="最大回撤" value={pct(result.metrics.maxDrawdown)} klass={styles.neg} />
-                <Stat label="夏普值" value={result.metrics.sharpe.toFixed(2)} />
-                <Stat label="年化波動" value={pct(result.metrics.volatility)} />
-                <Stat label="平均換手率" value={`${(result.metrics.turnover * 100).toFixed(0)}%`} />
-                <Stat
-                  label="再平衡 / 停損"
-                  value={`${result.metrics.rebalances} / ${result.metrics.stops}`}
-                />
-                {cfg.regime !== 'off' && (
-                  <Stat
-                    label="空頭空手佔比"
-                    value={`${(result.metrics.bearShare * 100).toFixed(0)}%`}
-                  />
-                )}
-                {(cfg.bearHolding ?? 'cash') === 'inverse' && (
-                  <Stat
-                    label="反1 持有佔比"
-                    value={`${(result.metrics.inverseShare * 100).toFixed(0)}%`}
-                  />
-                )}
               </div>
 
-              <div className={styles.snapshot}>
-                <div>
-                  <h3>
-                    當時持股 <span className={styles.sub}>{view.date}</span>
-                  </h3>
-                  <div className={styles.snapCol}>
-                    <ol>
-                      {view.heldList.map((c) => (
-                        <li key={c}>
-                          <span>
-                            {c} {names.get(c) ?? (c === '00632R' ? '元大台灣50反1' : '')}
-                          </span>
-                        </li>
-                      ))}
-                      {view.exitedSinceRebalance.map((e) => (
-                        <li key={e.code} className={styles.sub}>
-                          <span>
-                            {e.code} {names.get(e.code) ?? ''} —{' '}
-                            {e.reason === 'stop' ? '已停損' : '轉空清倉'}（{e.date}）
-                          </span>
-                        </li>
-                      ))}
-                      {view.heldList.length === 0 && view.exitedSinceRebalance.length === 0 && (
-                        <li>（尚未進場）</li>
+              <div className={styles.tabs} role="tablist">
+                {TABS.map(([k, label]) => (
+                  <button
+                    key={k}
+                    role="tab"
+                    aria-selected={tab === k}
+                    data-on={tab === k}
+                    onClick={() => setTab(k)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {tab === 'perf' && (
+                <>
+                  <EquityChart
+                    dates={result.dates}
+                    series={series}
+                    markers={view.markers}
+                    regime={cfg.regime !== 'off' ? result.regime : undefined}
+                    cursor={cursor}
+                    onCursor={setHover}
+                    onPin={(i) => setPinned((p) => (p === i ? null : i))}
+                  />
+                  <p className={styles.sub} style={{ marginTop: 4 }}>
+                    {(
+                      [
+                        ['twii', '大盤(報酬)'],
+                        ['e0050', '0050'],
+                        ['e00632r', '台灣50反1'],
+                      ] as const
+                    ).map(([k, label]) => (
+                      <label key={k} className={styles.refToggle}>
+                        <input
+                          type="checkbox"
+                          checked={refs[k]}
+                          onChange={(e) => setRefs((r) => ({ ...r, [k]: e.target.checked }))}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    {view.date} 持有{' '}
+                    {view.heldList.length
+                      ? view.heldList.map((c) => `${c} ${names.get(c) ?? ''}`.trim()).join('、')
+                      : '現金或反1'}
+                    <InfoHint label="圖怎麼看">
+                      虛線＝換股成交日，淡色底＝空頭。移到曲線看任一天，點一下鎖定、再點一下解開。
+                    </InfoHint>
+                    {pinned != null && (
+                      <button className={styles.unpin} onClick={() => setPinned(null)}>
+                        📌 {result.dates[pinned]} ✕
+                      </button>
+                    )}
+                  </p>
+
+                  {compareRows.length > 0 && <CompareTable rows={compareRows} />}
+
+                  <details className={styles.moreStats}>
+                    <summary>更多指標</summary>
+                    <div className={styles.stats}>
+                      <Stat
+                        label={`前 ${poolShown} 等權報酬`}
+                        value={pct(result.metrics.benchmarkReturn)}
+                        klass={cls(result.metrics.benchmarkReturn)}
+                      />
+                      <Stat label="夏普值" value={result.metrics.sharpe.toFixed(2)} />
+                      <Stat label="年化波動" value={pct(result.metrics.volatility)} />
+                      <Stat
+                        label="平均換手率"
+                        value={`${(result.metrics.turnover * 100).toFixed(0)}%`}
+                      />
+                      <Stat
+                        label="換股 / 停損 / 停利"
+                        value={`${result.metrics.rebalances} / ${result.metrics.stops} / ${result.metrics.takeProfits}`}
+                      />
+                      {cfg.regime !== 'off' && (
+                        <Stat
+                          label="空頭佔比"
+                          value={`${(result.metrics.bearShare * 100).toFixed(0)}%`}
+                        />
                       )}
-                    </ol>
-                  </div>
-                  {view.active && (
-                    <p className={styles.sub} style={{ marginTop: 6 }}>
-                      訊號 {view.active.signalDate}
-                      {view.active.tradeDate ? ` · 成交 ${view.active.tradeDate}` : ' · 尚未成交'}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {compareRows.length > 0 && <CompareTable rows={compareRows} />}
-
-              {rolling.length > 1 && (
-                <section className={styles.rollSection}>
-                  <div className={styles.rollHead}>
-                    <h3>
-                      滾動報酬 <span className={styles.sub}>每個進場時點、往後 N 個月的報酬</span>
-                    </h3>
-                    <CycleField
-                      label="視窗"
-                      value={windowMonths}
-                      options={WINDOW_OPTS}
-                      onChange={setWindowMonths}
-                    />
-                  </div>
-                  <RollingChart rows={rolling} />
-                  <div className={styles.stats}>
-                    <Stat
-                      label="正報酬比例"
-                      value={`${(rollSummary.positivePct * 100).toFixed(0)}%`}
-                      klass={cls(rollSummary.positivePct - 0.5)}
-                    />
-                    <Stat
-                      label="報酬中位數"
-                      value={pct(rollSummary.median)}
-                      klass={cls(rollSummary.median)}
-                    />
-                    <Stat
-                      label="最好 / 最差"
-                      value={`${pct(rollSummary.best)} / ${pct(rollSummary.worst)}`}
-                    />
-                    <Stat
-                      label="贏基準比例"
-                      value={`${(rollSummary.beatBenchPct * 100).toFixed(0)}%`}
-                      klass={cls(rollSummary.beatBenchPct - 0.5)}
-                    />
-                    <Stat label="視窗數" value={String(rollSummary.n)} />
-                  </div>
-                </section>
+                      {(cfg.bearHolding ?? 'cash') === 'inverse' && (
+                        <Stat
+                          label="反1 持有佔比"
+                          value={`${(result.metrics.inverseShare * 100).toFixed(0)}%`}
+                        />
+                      )}
+                    </div>
+                  </details>
+                </>
               )}
 
-              {outcomes.length > 1 && (
-                <section className={styles.rollSection}>
-                  <div className={styles.rollHead}>
+              {tab === 'dist' && (
+                <DistributionTab
+                  history={history}
+                  baselines={blData}
+                  cfg={cfg}
+                  windowMonths={windowMonths}
+                  setWindowMonths={setWindowMonths}
+                  distMonths={distMonths}
+                  setDistMonths={setDistMonths}
+                  distMode={distMode}
+                  setDistMode={setDistMode}
+                />
+              )}
+
+              {tab === 'hold' && (
+                <div className={styles.snapshot}>
+                  <div>
                     <h3>
-                      報酬分布{' '}
-                      <span className={styles.sub}>
-                        {distMode === 'aligned'
-                          ? `換股日進場、掃過所有換股日、抱滿 N 個月（${distSummary.n.toLocaleString()} 組）`
-                          : distMode === 'all'
-                            ? `任一交易日進場、掃過所有換股日、抱滿 N 個月（${distSummary.n.toLocaleString()} 組）`
-                            : `任一交易日進場、抱滿 N 個月（${distSummary.n} 個起點）`}
-                      </span>
+                      當時持股 <span className={styles.sub}>{view.date}</span>
                     </h3>
-                    <div className={styles.distControls}>
-                      <CycleField
-                        label="取樣"
-                        value={distMode}
-                        options={[
-                          ['aligned', '換股日進場'],
-                          ['all', '每日進場'],
-                          ['follow', '跟隨設定'],
-                        ]}
-                        onChange={setDistMode}
-                      />
-                      <CycleField
-                        label="持有期"
-                        value={distMonths}
-                        options={WINDOW_OPTS}
-                        onChange={setDistMonths}
-                      />
+                    <div className={styles.snapCol}>
+                      <ol>
+                        {view.heldList.map((c) => (
+                          <li key={c}>
+                            <span>
+                              {c} {names.get(c) ?? ''}
+                            </span>
+                          </li>
+                        ))}
+                        {view.exitedSinceRebalance.map((e) => (
+                          <li key={e.code} className={styles.sub}>
+                            <span>
+                              {e.code} {names.get(e.code) ?? ''} —{' '}
+                              {e.reason === 'stop'
+                                ? '已停損'
+                                : e.reason === 'take-profit'
+                                  ? '已停利'
+                                  : '轉空清倉'}
+                              （{e.date}）
+                            </span>
+                          </li>
+                        ))}
+                        {view.heldList.length === 0 && view.exitedSinceRebalance.length === 0 && (
+                          <li>（空手）</li>
+                        )}
+                      </ol>
+                    </div>
+                    {view.active && (
+                      <p className={styles.sub} style={{ marginTop: 6 }}>
+                        訊號 {view.active.signalDate}
+                        {view.active.tradeDate ? ` · 成交 ${view.active.tradeDate}` : ' · 尚未成交'}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <h3>
+                      當時市值前 {poolShown} <span className={styles.sub}>持股標藍</span>
+                    </h3>
+                    <div className={styles.snapCol}>
+                      <ol>
+                        {view.pool.map((s, i) => (
+                          <li
+                            key={s.code}
+                            className={view.held.has(s.code) ? styles.held : undefined}
+                          >
+                            <span>
+                              {i + 1}. {s.code} {names.get(s.code) ?? ''}
+                            </span>
+                            <span className={styles.mc}>
+                              {Math.round(s.mcap).toLocaleString()} 億
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
                     </div>
                   </div>
-                  <OutcomeHistogram
-                    returns={outcomes.map((o) => o.ret)}
-                    median={distSummary.median}
-                    mean={distSummary.mean}
-                  />
-                  <div className={styles.stats}>
-                    <Stat
-                      label="報酬中位數"
-                      value={pct(distSummary.median)}
-                      klass={cls(distSummary.median)}
-                    />
-                    <Stat
-                      label="期望值"
-                      value={pct(distSummary.mean)}
-                      klass={cls(distSummary.mean)}
-                    />
-                    <Stat
-                      label="成長為投入的"
-                      value={`${((1 + distSummary.median) * 100).toFixed(0)}%`}
-                    />
-                    <Stat label="標準差" value={pct(distSummary.stdev)} />
-                    <Stat
-                      label="正報酬比例"
-                      value={`${(distSummary.positivePct * 100).toFixed(0)}%`}
-                      klass={cls(distSummary.positivePct - 0.5)}
-                    />
-                    <Stat
-                      label="相對基準（中位）"
-                      value={pct(distSummary.medianExcessBench)}
-                      klass={cls(distSummary.medianExcessBench)}
-                    />
-                    {distSummary.medianExcess['大盤'] != null && (
-                      <Stat
-                        label="相對大盤（中位）"
-                        value={pct(distSummary.medianExcess['大盤'])}
-                        klass={cls(distSummary.medianExcess['大盤'])}
-                      />
-                    )}
-                    {distSummary.medianExcess['0050'] != null && (
-                      <Stat
-                        label="相對 0050（中位）"
-                        value={pct(distSummary.medianExcess['0050'])}
-                        klass={cls(distSummary.medianExcess['0050'])}
-                      />
-                    )}
-                  </div>
-                  <p className={styles.rollLegend}>
-                    {distMode === 'aligned'
-                      ? '「換股日進場」= 每月第 1..20 個交易日換股各跑一次，只從換股日當進場點；不隨你設的換股日變。'
-                      : distMode === 'all'
-                        ? '「每日進場」= 同上但每個交易日都當進場點，樣本更多；不隨你設的換股日變。'
-                        : '「跟隨設定」= 用你目前設定的換股日。'}
-                    重疊視窗、非獨立樣本，期望值與標準差僅供參考。詳見下方說明。
-                  </p>
-                </section>
+                </div>
               )}
 
-              <div className={styles.snapshot}>
-                <div>
-                  <h3>
-                    當時市值前 {poolShown} <span className={styles.sub}>持股標藍</span>
-                  </h3>
-                  <div className={styles.snapCol}>
-                    <ol>
-                      {view.pool.map((s, i) => (
-                        <li
-                          key={s.code}
-                          className={view.held.has(s.code) ? styles.held : undefined}
-                        >
-                          <span>
-                            {i + 1}. {s.code} {names.get(s.code) ?? ''}
-                          </span>
-                          <span className={styles.mc}>
-                            {Math.round(s.mcap).toLocaleString()} 億
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                </div>
-              </div>
+              {tab === 'notes' && <MethodNotes />}
 
               <p className={styles.note}>
-                回測區間 {span}（約 {result.metrics.years.toFixed(1)} 年）。結果僅供研究，不代表未來
-                績效。候選 universe 為市值前 {universeSize} 檔的歷史聯集；仍有殘存存活者偏誤。
-                實際績效會因滑價、整股限制、成交量等低於回測。詳見下方說明。
+                回測區間約 {result.metrics.years.toFixed(1)} 年，僅供研究，不代表未來績效。
+                <InfoHint label="回測的限制">
+                  候選 universe 為市值前 {universeSize}{' '}
+                  檔的歷史聯集，仍有殘存存活者偏誤。實際績效會因 滑價、整股限制、成交量等低於回測。
+                </InfoHint>
               </p>
-
-              <MethodNotes />
             </>
           )}
         </div>
       </div>
     </Layout>
-  )
-}
-
-function Stat({ label, value, klass }: { label: string; value: string; klass?: string }) {
-  return (
-    <div className={styles.stat}>
-      <div className={styles.statLabel}>{label}</div>
-      <div className={`${styles.statValue} ${klass ?? ''}`}>{value}</div>
-    </div>
   )
 }

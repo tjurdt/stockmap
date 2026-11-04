@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 
 import { tradingDayOrdinal } from '../../lib/calendar'
 import type { PlanState } from '../../lib/plan'
-import { encodeParams } from '../backtest/strategyParams'
 import styles from './planner.module.css'
 
 const WEEKDAYS = [
@@ -19,14 +18,11 @@ export function PlanSettings({
   setPlan,
   holidays,
   strategySummary,
-  seeded,
 }: {
   plan: PlanState
   setPlan: (next: PlanState) => void
   holidays: Set<string>
   strategySummary: string
-  /** 這次是從回測頁帶設定過來的 */
-  seeded: boolean
 }) {
   const s = plan.strategy
   const patch = (p: Partial<typeof s>) => setPlan({ ...plan, strategy: { ...s, ...p } })
@@ -101,14 +97,11 @@ export function PlanSettings({
         <div className={`${styles.group} ${styles.gStrategy}`}>
           <label className={styles.field}>策略參數</label>
           <p className={styles.strategyLine}>{strategySummary}</p>
-          {seeded && (
-            <p className={styles.hint}>✓ 已套用回測頁帶來的設定（買賣紀錄 / 上線日保留）。</p>
-          )}
-          <Link to={`/backtest?${encodeParams(s)}`} className={styles.link}>
-            → 回回測頁調整因子 / 檔數 / 停損 / 動能換股 / 多空過濾
+          <Link to="/backtest" className={styles.link}>
+            → 到回測頁調整策略
           </Link>
           <p className={styles.hint}>
-            這頁的所有訊號都照這組參數算；想換規則請在回測頁驗證過再帶回來。
+            這頁的所有訊號都照這組參數算。在回測頁驗證過後，按「套用到操作計畫」才會換。
           </p>
         </div>
       </div>

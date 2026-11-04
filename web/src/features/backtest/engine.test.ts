@@ -248,6 +248,48 @@ describe('runBacktest', () => {
     expect(nextDay.metrics.totalReturn).toBeCloseTo(-0.24, 2)
   })
 
+  describe('takeProfitPct', () => {
+    const seq = [100, 105, 112, 121, 130, 140, 150, 160, 170, 180]
+    const h = seq.map((adj, i) =>
+      row(`2026-05-${String(i + 1).padStart(2, '0')}`, [{ code: '1111', adj, f: 1 }]),
+    )
+    const base = {
+      factor: 'm20' as const,
+      topN: 1,
+      rebalance: 'M' as const,
+      weighting: 'equal' as const,
+      costBps: 0,
+      execLagDays: 0,
+    }
+
+    it('漲超過門檻當天收盤出場，之後抱現金到下次換股日', () => {
+      const r = runBacktest(h, { ...base, takeProfitPct: 20 })
+      expect(r.metrics.takeProfits).toBe(1)
+      expect(r.metrics.stops).toBe(0)
+      expect(r.exitEvents).toEqual([{ date: '2026-05-04', code: '1111', reason: 'take-profit' }])
+      expect(r.metrics.totalReturn).toBeCloseTo(0.21, 2)
+      expect(r.dailyHoldings.at(-1)).toEqual([])
+    })
+
+    it('stopExecNext 時晚一天出場', () => {
+      const r = runBacktest(h, { ...base, takeProfitPct: 20, stopExecNext: true })
+      expect(r.exitEvents[0]).toMatchObject({ date: '2026-05-05', reason: 'take-profit' })
+      expect(r.metrics.totalReturn).toBeCloseTo(0.3, 2)
+    })
+
+    it('0 = 關', () => {
+      const r = runBacktest(h, { ...base, takeProfitPct: 0 })
+      expect(r.metrics.takeProfits).toBe(0)
+      expect(r.metrics.totalReturn).toBeCloseTo(0.8, 2)
+    })
+
+    it('扣賣出成本', () => {
+      const r = runBacktest(h, { ...base, feeBps: 0, taxBps: 100, takeProfitPct: 20 })
+      // 進場換手 50% 先扣半邊成本（引擎既有算法），停利賣出再扣 1%
+      expect(r.metrics.totalReturn).toBeCloseTo(1.21 * 0.995 * 0.99 - 1, 3)
+    })
+  })
+
   it('trailing stop-loss triggers on drawdown from peak', () => {
     // A 漲到 120 再回落到 105（自高點 -12.5%）。trailing 10% → 出場。
     const seq = [100, 105, 110, 115, 120, 118, 112, 105, 100, 95]

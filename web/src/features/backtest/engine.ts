@@ -88,6 +88,11 @@ export interface BacktestConfig {
    */
   stopExecNext?: boolean
   /**
+   * 停利。0 / 省略 = 關。個股自買進（還原價）漲超過 takeProfitPct% 就出場、持有現金到下次換股日。
+   * 成交時點跟停損同一個設定（`stopExecNext`）；只看收盤，不看盤中高點。
+   */
+  takeProfitPct?: number
+  /**
    * 動能換股：非排程換股日也監看排名，一有池內未持有的股票因子明顯優於手上最弱一檔就換。
    * swapMargin：挑戰者的因子值需比最弱持股「好」超過這個門檻，門檻的意義由 swapMarginMode 決定。
    * swapMarginMode：'relative'（預設）＝最弱持股因子值的 swapMargin%（相對值，適合 PE/PB 這種
@@ -137,6 +142,8 @@ export interface BacktestMetrics {
   rebalances: number
   /** 停損出場次數 */
   stops: number
+  /** 停利出場次數 */
+  takeProfits: number
   /** 空頭天數佔比（regime = off 時為 0） */
   bearShare: number
   /** 持有台灣50反1的天數佔比（bearHolding != inverse 時為 0） */
@@ -157,7 +164,7 @@ export interface RebalanceEvent {
 export interface ExitEvent {
   date: string
   code: string
-  reason: 'stop' | 'bear-exit'
+  reason: 'stop' | 'take-profit' | 'bear-exit'
 }
 
 export interface BacktestResult {
@@ -652,8 +659,19 @@ export function runBacktest(
   const stopFrac = (cfg.stopPct ?? 0) / 100
   const stopMaDays = Math.max(2, Math.round(cfg.stopMaDays ?? 20))
   const stopExecNext = cfg.stopExecNext === true
-  /** stopExecNext 時：偵測到破損、待下一交易日收盤才出場的代號。 */
-  const pendingStops = new Set<string>()
+  const takeProfitFrac = Math.max(0, cfg.takeProfitPct ?? 0) / 100
+  let takeProfits = 0
+  /** stopExecNext 時：偵測到停損 / 停利、待下一交易日收盤才出場的代號。 */
+  const pendingExits = new Map<string, 'stop' | 'take-profit'>()
+  /** 賣掉一檔個股（停損 / 停利共用）：扣賣出成本、清部位、記事件。 */
+  const exitPosition = (c: string, w: number, date: string, reason: 'stop' | 'take-profit') => {
+    eq *= 1 - sellFrac * w
+    weights.set(c, 0)
+    entry.delete(c)
+    if (reason === 'stop') stops++
+    else takeProfits++
+    exitEvents.push({ date, code: c, reason })
+  }
   const immediateExit = (cfg.regime ?? 'off') !== 'off' && cfg.regimeExit === 'immediate'
   const bearInverse = (cfg.regime ?? 'off') !== 'off' && cfg.bearHolding === 'inverse'
   const invRet = bearInverse ? inverseReturns(baselines) : new Map<string, number>()
@@ -715,19 +733,13 @@ export function runBacktest(
         bench *= 1 + poolRets.reduce((a, b) => a + b, 0) / poolRets.length
       }
 
-      // 昨天偵測到、今天收盤才出場的停損（stopExecNext）
-      if (pendingStops.size) {
-        for (const c of pendingStops) {
+      // 昨天偵測到、今天收盤才出場的停損 / 停利（stopExecNext）
+      if (pendingExits.size) {
+        for (const [c, reason] of pendingExits) {
           const w = weights.get(c) ?? 0
-          if (w > 0 && c !== INVERSE_CODE) {
-            eq *= 1 - sellFrac * w
-            weights.set(c, 0)
-            entry.delete(c)
-            stops++
-            exitEvents.push({ date: row.date, code: c, reason: 'stop' })
-          }
+          if (w > 0 && c !== INVERSE_CODE) exitPosition(c, w, row.date, reason)
         }
-        pendingStops.clear()
+        pendingExits.clear()
       }
 
       // 停損檢查（用當日 adjClose）
@@ -752,15 +764,20 @@ export function runBacktest(
             hit = ref > 0 && px / ref - 1 <= -stopFrac
           }
           if (!hit) continue
-          if (stopExecNext) {
-            pendingStops.add(c)
-          } else {
-            eq *= 1 - sellFrac * w // 賣出成本
-            weights.set(c, 0)
-            entry.delete(c)
-            stops++
-            exitEvents.push({ date: row.date, code: c, reason: 'stop' })
-          }
+          if (stopExecNext) pendingExits.set(c, 'stop')
+          else exitPosition(c, w, row.date, 'stop')
+        }
+      }
+
+      // 停利檢查（優先序在停損之後：同一天兩者都成立不可能，這裡只是保持順序一致）
+      if (takeProfitFrac > 0) {
+        for (const [c, w] of weights) {
+          if (w <= 0 || c === INVERSE_CODE || pendingExits.has(c)) continue
+          const e = entry.get(c)
+          const px = adj.get(c)
+          if (!e || px == null || e.in <= 0 || px / e.in - 1 < takeProfitFrac) continue
+          if (stopExecNext) pendingExits.set(c, 'take-profit')
+          else exitPosition(c, w, row.date, 'take-profit')
         }
       }
 
@@ -890,6 +907,7 @@ export function runBacktest(
       turnover: turnovers.length ? turnovers.reduce((a, b) => a + b, 0) / turnovers.length : 0,
       rebalances: turnovers.length,
       stops,
+      takeProfits,
       bearShare: regime.length ? regime.filter((r) => r === 'bear').length / regime.length : 0,
       inverseShare: dates.length ? inverseDays / dates.length : 0,
       tradingDays: dates.length,

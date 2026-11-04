@@ -5,6 +5,7 @@ import { DEFAULT_PARAMS } from '../features/backtest/strategyParams'
 import {
   holdingsOf,
   operatorPlanSchema,
+  parseStoredPlan,
   positionSchema,
   strategySchema,
   toPlanJson,
@@ -79,5 +80,27 @@ describe('operator plan 契約：zod ↔ schema/operator_plan.schema.json', () =
         { id: 'x', date: '2026-09-15', code: '2330', side: 'buy', shares: 1000, price: 2400 },
       ]),
     ).toEqual([{ code: '2330', shares: 1000, entryPrice: 2400, entryDate: '2026-09-15' }])
+  })
+})
+
+describe('parseStoredPlan', () => {
+  it('舊存檔少了後來才加的策略欄位 → 策略與買賣紀錄都要保留', () => {
+    const { takeProfitPct: _omit, ...oldStrategy } = { ...DEFAULT_PARAMS, topN: 1 }
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      startDate: '2026-09-07',
+      strategy: oldStrategy,
+      holdings: [],
+      trades: [{ id: 'a', date: '2026-09-07', code: '1303', side: 'buy', shares: 1, price: 235 }],
+    })
+    const p = parseStoredPlan(raw)!
+    expect(p.strategy.topN).toBe(1)
+    expect(p.strategy.takeProfitPct).toBe(0)
+    expect(p.trades).toHaveLength(1)
+  })
+
+  it('壞掉的存檔 → null', () => {
+    expect(parseStoredPlan('{')).toBeNull()
+    expect(parseStoredPlan('{"schemaVersion":99}')).toBeNull()
   })
 })

@@ -1,17 +1,25 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
 import { InfoHint } from './InfoHint'
 import styles from './Layout.module.css'
 
+/** 依使用頻率排：每天看 → 成交後記 → 想改策略 → 逛市場。 */
 const NAV = [
-  { to: '/', label: '因子散佈圖', end: true },
-  { to: '/ranking', label: '排行榜', end: false },
-  { to: '/backtest', label: '回測', end: false },
-  { to: '/plan', label: '操作計畫', end: false },
+  { to: '/plan', label: '今日操作' },
+  { to: '/performance', label: '我的績效' },
+  { to: '/backtest', label: '回測' },
+  { to: '/market', label: '市場' },
 ]
+const MARKET_NAV = [
+  { to: '/market', label: '因子散佈圖' },
+  { to: '/ranking', label: '排行榜' },
+]
+const MARKET_PATHS = ['/market', '/ranking', '/stock']
 
 export function Layout({ asOf, children }: { asOf?: ReactNode; children: ReactNode }) {
+  const { pathname } = useLocation()
+  const inMarket = MARKET_PATHS.some((p) => pathname.startsWith(p))
   return (
     <div className={styles.wrap}>
       <header className={styles.header}>
@@ -21,8 +29,9 @@ export function Layout({ asOf, children }: { asOf?: ReactNode; children: ReactNo
             <NavLink
               key={n.to}
               to={n.to}
-              end={n.end}
-              className={({ isActive }) => (isActive ? styles.active : undefined)}
+              className={({ isActive }) =>
+                isActive || (n.to === '/market' && inMarket) ? styles.active : undefined
+              }
             >
               {n.label}
             </NavLink>
@@ -30,6 +39,19 @@ export function Layout({ asOf, children }: { asOf?: ReactNode; children: ReactNo
         </nav>
         {asOf != null && <span className={styles.asof}>{asOf}</span>}
       </header>
+      {inMarket && (
+        <nav className={styles.subnav}>
+          {MARKET_NAV.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              className={({ isActive }) => (isActive ? styles.subActive : undefined)}
+            >
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
+      )}
       {children}
       <footer className={styles.footer}>
         僅供研究，不構成投資建議。

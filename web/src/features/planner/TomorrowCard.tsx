@@ -55,10 +55,10 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
   // 策略設定訊號日當天成交（execLagDays / swapExecNext）時，下單日就是今天
   const sameDay = v.act && v.tradeDate === report.asOfDate
   const w = report.swapWatch
-  // 要動手時才列步驟；停損要單獨列在最前面（不等換股日）
+  // 要動手時才列步驟；停損 / 停利要單獨列在最前面（不等換股日）
   const todo: ActionRow[] = v.act
     ? [
-        ...report.stopActionsNow.map<ActionRow>((s) => {
+        ...[...report.stopActionsNow, ...report.takeProfitActionsNow].map<ActionRow>((s) => {
           const h = report.holdings.find((x) => x.code === s.code)
           return {
             kind: 'sell',
@@ -69,7 +69,9 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
             price: h?.price,
           }
         }),
-        ...(v.kind === 'stop' ? [] : report.actions.filter((a) => a.kind !== 'keep')),
+        ...(v.kind === 'stop' || v.kind === 'take-profit'
+          ? []
+          : report.actions.filter((a) => a.kind !== 'keep')),
       ]
     : []
 
@@ -122,11 +124,6 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
 
       <div className={styles.facts}>
         <div className={styles.fact}>
-          <p className={styles.factLabel}>下一個交易日</p>
-          <p className={styles.factValue}>{report.nextTradingDay}</p>
-          <p className={styles.factNote}>{v.act ? '要照上面的清單下單' : '不用動作'}</p>
-        </div>
-        <div className={styles.fact}>
           <p className={styles.factLabel}>下一個定期換股日</p>
           <p className={styles.factValue}>{report.nextRebalanceDate}</p>
           <p className={styles.factNote}>
@@ -145,18 +142,6 @@ export function TomorrowCard({ report }: { report: OperatorReport }) {
             </p>
           </div>
         )}
-        <div className={styles.fact}>
-          <p className={styles.factLabel}>目前持股</p>
-          <p className={styles.factValue}>
-            {report.holdings.length} 檔
-            {report.totalValue != null ? `　${money(report.totalValue)} 元` : ''}
-          </p>
-          <p className={styles.factNote}>
-            {report.holdings.filter((h) => !h.inTargets).length > 0
-              ? `其中 ${report.holdings.filter((h) => !h.inTargets).length} 檔已掉出目標名單`
-              : '都還在目標名單內'}
-          </p>
-        </div>
       </div>
     </>
   )
