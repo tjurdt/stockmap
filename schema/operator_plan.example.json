@@ -18,6 +18,7 @@
     "stopPct": 20,
     "stopMaDays": 20,
     "stopExecNext": false,
+    "takeProfitPct": 0,
     "swapOnBetter": false,
     "swapMargin": 15,
     "swapMarginMode": "relative",

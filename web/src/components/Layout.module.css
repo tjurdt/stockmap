@@ -75,3 +75,18 @@
   padding: 1px 4px;
   border: 1px solid var(--line);
 }
+
+.subnav {
+  display: flex;
+  gap: var(--sp-3);
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-4);
+  font-size: var(--fs-sm);
+}
+.subnav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.subActive {
+  color: var(--ink) !important;
+  font-weight: 600;
+}

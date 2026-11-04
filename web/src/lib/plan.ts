@@ -46,6 +46,8 @@ export const strategySchema = z.object({
   stopPct: z.number().positive(),
   stopMaDays: z.number().int().positive(),
   stopExecNext: z.boolean(),
+  /** 自買進漲超過這個 % 就賣；0 = 不停利。成交時點同 stopExecNext。 */
+  takeProfitPct: z.number().nonnegative(),
   swapOnBetter: z.boolean(),
   swapMargin: z.number().nonnegative(),
   /** relative＝最弱持股因子值的 margin%；absolute＝因子原始單位的差值。 */
@@ -118,16 +120,32 @@ export function toPlanJson(p: PlanState): OperatorPlan {
 
 const KEY = 'stockmap:plan.v1'
 
-function read(): PlanState | null {
+/**
+ * 解析存檔。策略欄位以 DEFAULT_PARAMS 補底 —— 之後新增欄位時，舊存檔才不會整份驗證失敗、
+ * 被當成沒有計畫（那會讓使用者的策略和買賣紀錄一起變回預設）。
+ */
+export function parseStoredPlan(raw: string): PlanState | null {
   try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return null
-    const parsed = operatorPlanSchema.safeParse(JSON.parse(raw))
+    const json = JSON.parse(raw)
+    const parsed = operatorPlanSchema.safeParse({
+      ...json,
+      strategy: { ...DEFAULT_PARAMS, ...json?.strategy },
+    })
     if (!parsed.success) return null
     const { startDate, strategy, holdings, trades } = parsed.data
     // 舊版沒有交易日誌 → 用既有持股（或更舊的「操作訊號」頁存的那份）轉成等值的買進紀錄
     const legacy = holdings.length ? holdings : readLegacyHoldings()
     return { startDate, strategy, trades: trades?.length ? trades : tradesFromPositions(legacy) }
+  } catch {
+    return null
+  }
+}
+
+/** 這台裝置存的操作計畫；沒有 = null。 */
+export function readStoredPlan(): PlanState | null {
+  try {
+    const raw = localStorage.getItem(KEY)
+    return raw ? parseStoredPlan(raw) : null
   } catch {
     return null
   }
@@ -146,7 +164,7 @@ function write(next: PlanState): void {
  *                     （交易日誌 / 上線日保留）。沒有 query（直接開 /plan）就別傳。
  */
 export function useOperatorPlan(seedStrategy?: StrategyParams) {
-  const [plan, setPlan] = useState<PlanState>(() => read() ?? defaultPlan(seedStrategy))
+  const [plan, setPlan] = useState<PlanState>(() => readStoredPlan() ?? defaultPlan(seedStrategy))
 
   const save = useCallback((next: PlanState) => {
     setPlan(next)

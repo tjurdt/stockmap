@@ -640,3 +640,23 @@
   border-left: 2px dashed var(--chart-axis);
   border-radius: 0;
 }
+
+/* 績效頁的結論框：賺賠用狀態色（台股慣例：賺=紅、賠=綠） */
+.verdictGain {
+  border-color: color-mix(in srgb, var(--up) 45%, var(--line));
+  background: color-mix(in srgb, var(--up) 6%, var(--surface));
+}
+.verdictLoss {
+  border-color: color-mix(in srgb, var(--down) 45%, var(--line));
+  background: color-mix(in srgb, var(--down) 6%, var(--surface));
+}
+.quickLinks {
+  margin: 0;
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+.foldStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}

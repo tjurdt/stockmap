@@ -65,7 +65,7 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
    `pipeline/tests/test_factor_alignment.py` 釘住不准 drift。
    回測 / 訊號邏輯在 `web/src/features/backtest/engine.ts`（純函式、有測試）；換股時點用真實交易日曆
    （`web/src/lib/calendar.ts` ← `data/calendar.json`），「每月第 N 個交易日」。
-   **規則優先序（引擎與 `report.ts` 必須一致）**：停損 → 轉空清空 → **排程換股日** → 動能換股。
+   **規則優先序（引擎與 `report.ts` 必須一致）**：停損 → 停利 → 轉空清空 → **排程換股日** → 動能換股。
    `swapMinHoldDays`（最短持有）只擋最後一項；排程換股日一到照樣整批換。
 4. **因子 key 三處對齊**：`factors.py` 的 `FACTORS`、`schema/snapshot.schema.json`、
    `web/src/lib/metrics.ts` 的 `METRICS`。
@@ -75,6 +75,12 @@ python schema/validate.py            # 驗證 data/ 與 schema/universe.json
 6. 每個 lib 純函式（`web/src/lib/`、`twse_pipeline/util.py`、`factors.py`）都應有對應測試。
 7. **「明天要幹嘛」只有一份事實來源**：`web/src/features/signal/report.ts::buildOperatorReport`
    （含 `verdict` / `swapWatch`）。網站 `/plan` 只渲染它，不自己重算規則。
+8. **實際績效只有一份事實來源**：`web/src/lib/performance.ts::buildPerformance`（時間加權 / 資金加權 /
+   同金流比較），`/performance` 只渲染它。現金流由買賣紀錄反推：賣出的錢留在帳上、買進不夠才算新投入。
+9. **交易成本預設值只在 `web/src/lib/costs.ts`**（對齊券商成交明細，費用無條件捨去到元）。改預設值要
+   bump `features/backtest/prefs.ts` 的 `COST_REV`，舊記憶才會換新。
+10. **`stockmap:plan.v1` 舊存檔不能因為新增策略欄位而失效**：`parseStoredPlan` 以 `DEFAULT_PARAMS` 補底，
+    不要繞過它，否則使用者的策略與買賣紀錄會一起消失。
 
 ## 擴充
 

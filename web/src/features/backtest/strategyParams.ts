@@ -21,6 +21,7 @@ export type StrategyParams = Required<
     | 'stopPct'
     | 'stopMaDays'
     | 'stopExecNext'
+    | 'takeProfitPct'
     | 'swapOnBetter'
     | 'swapMargin'
     | 'swapMarginMode'
@@ -50,6 +51,7 @@ export const DEFAULT_PARAMS: StrategyParams = {
   stopPct: 20,
   stopMaDays: 20,
   stopExecNext: false,
+  takeProfitPct: 0,
   swapOnBetter: false,
   swapMargin: 15,
   swapMarginMode: 'relative',
@@ -59,6 +61,38 @@ export const DEFAULT_PARAMS: StrategyParams = {
   regimeDays: 200,
   regimeExit: 'rebalance',
   bearHolding: 'cash',
+}
+
+/** 回測設定 → 策略參數（補齊省略的欄位，比較 / 存檔 / 帶去操作計畫都用這份）。 */
+export function toStrategyParams(c: BacktestConfig): StrategyParams {
+  return {
+    factor: c.factor,
+    momDays: c.momDays ?? 0,
+    momSkip: c.momSkip ?? 0,
+    customFormula: c.customFormula ?? '',
+    customLabel: c.customLabel ?? '',
+    customBetterWhen: c.customBetterWhen ?? 'high',
+    topN: c.topN,
+    poolTopN: c.poolTopN ?? 50,
+    rebalance: c.rebalance,
+    rebalanceDay: c.rebalanceDay ?? 1,
+    weighting: c.weighting,
+    execLagDays: c.execLagDays ?? 1,
+    stopType: c.stopType ?? 'none',
+    stopPct: c.stopPct ?? 20,
+    stopMaDays: c.stopMaDays ?? 20,
+    stopExecNext: c.stopExecNext ?? false,
+    takeProfitPct: c.takeProfitPct ?? 0,
+    swapOnBetter: c.swapOnBetter ?? false,
+    swapMargin: c.swapMargin ?? 15,
+    swapMarginMode: c.swapMarginMode ?? 'relative',
+    swapMinHoldDays: c.swapMinHoldDays ?? 10,
+    swapExecNext: c.swapExecNext ?? true,
+    regime: c.regime ?? 'off',
+    regimeDays: c.regimeDays ?? 200,
+    regimeExit: c.regimeExit ?? 'rebalance',
+    bearHolding: c.bearHolding ?? 'cash',
+  }
 }
 
 export function encodeParams(p: StrategyParams): string {
@@ -79,6 +113,7 @@ export function encodeParams(p: StrategyParams): string {
     stopPct: String(p.stopPct),
     stopMaDays: String(p.stopMaDays),
     stopExecNext: p.stopExecNext ? '1' : '0',
+    tp: String(p.takeProfitPct),
     swap: p.swapOnBetter ? '1' : '0',
     swapMargin: String(p.swapMargin),
     swapMarginMode: p.swapMarginMode,
@@ -124,6 +159,7 @@ export function decodeParams(qs: string): StrategyParams {
     stopPct: num('stopPct', DEFAULT_PARAMS.stopPct),
     stopMaDays: num('stopMaDays', DEFAULT_PARAMS.stopMaDays),
     stopExecNext: q.get('stopExecNext') === '1',
+    takeProfitPct: numNonNeg('tp', DEFAULT_PARAMS.takeProfitPct),
     swapOnBetter: q.get('swap') === '1',
     swapMargin: numNonNeg('swapMargin', DEFAULT_PARAMS.swapMargin),
     swapMarginMode: q.get('swapMarginMode') === 'absolute' ? 'absolute' : 'relative',

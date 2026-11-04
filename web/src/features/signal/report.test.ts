@@ -122,6 +122,77 @@ describe('buildOperatorReport', () => {
     expect(r.actions.every((a) => a.kind === 'buy')).toBe(true)
   })
 
+  it('賣光之後不是「上線進場」：空手等下一個換股日（同回測引擎）', () => {
+    const r = buildOperatorReport(
+      history(10),
+      [],
+      {
+        ...plan({ startDate: '2026-01-01', strategy: { rebalance: 'M', rebalanceDay: 25 } }),
+        trades: [
+          { id: 'a', date: '2026-01-02', code: '1111', side: 'buy', shares: 10, price: 100 },
+          { id: 'b', date: '2026-01-05', code: '1111', side: 'sell', shares: 10, price: 100 },
+        ],
+      },
+      names,
+    )!
+    expect(r.isEntryDay).toBe(false)
+    expect(r.verdict.kind).toBe('hold')
+  })
+
+  it('停利：達標 → 列入 takeProfitActionsNow，結論要賣出', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: { rebalance: 'M', rebalanceDay: 25, takeProfitPct: 20 },
+        holdings: [{ code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-02' }],
+      }),
+      names,
+    )!
+    expect(r.takeProfitActionsNow.map((a) => a.code)).toEqual(['1111'])
+    expect(r.holdings[0]!.takeProfitPrice).toBeCloseTo(120)
+    expect(r.verdict.kind).toBe('take-profit')
+    expect(r.verdict.act).toBe(true)
+    expect(r.strategySummary).toContain('停利 20%')
+  })
+
+  it('停損優先於停利', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: {
+          rebalance: 'M',
+          rebalanceDay: 25,
+          takeProfitPct: 20,
+          stopType: 'fixed',
+          stopPct: 10,
+        },
+        holdings: [
+          { code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-02' },
+          { code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-02' },
+        ],
+      }),
+      names,
+    )!
+    expect(r.verdict.kind).toBe('stop')
+    expect(r.takeProfitActionsNow.map((a) => a.code)).toEqual(['1111'])
+  })
+
+  it('沒設停利 → 不影響結論', () => {
+    const r = buildOperatorReport(
+      history(30),
+      [],
+      plan({
+        strategy: { rebalance: 'M', rebalanceDay: 25 },
+        holdings: [{ code: '1111', shares: 1000, entryPrice: 100, entryDate: '2026-01-02' }],
+      }),
+      names,
+    )!
+    expect(r.takeProfitActionsNow).toEqual([])
+    expect(r.holdings[0]!.takeProfitPrice).toBeNull()
+  })
+
   it('動能排行 vs 持股：前十 + 差值', () => {
     const r = buildOperatorReport(
       history(30),

@@ -30,15 +30,48 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "factor", "momDays", "momSkip", "customFormula", "customLabel", "customBetterWhen",
-        "topN", "poolTopN", "rebalance", "rebalanceDay", "weighting",
-        "execLagDays", "stopType", "stopPct", "stopMaDays", "stopExecNext",
-        "swapOnBetter", "swapMargin", "swapMarginMode", "swapMinHoldDays", "swapExecNext",
-        "regime", "regimeDays", "regimeExit", "bearHolding"
+        "factor",
+        "momDays",
+        "momSkip",
+        "customFormula",
+        "customLabel",
+        "customBetterWhen",
+        "topN",
+        "poolTopN",
+        "rebalance",
+        "rebalanceDay",
+        "weighting",
+        "execLagDays",
+        "stopType",
+        "stopPct",
+        "stopMaDays",
+        "stopExecNext",
+        "takeProfitPct",
+        "swapOnBetter",
+        "swapMargin",
+        "swapMarginMode",
+        "swapMinHoldDays",
+        "swapExecNext",
+        "regime",
+        "regimeDays",
+        "regimeExit",
+        "bearHolding"
       ],
       "properties": {
         "factor": {
-          "enum": ["price", "mcap", "pe", "pb", "dy", "chg", "turn", "m20", "m60", "m121", "custom"],
+          "enum": [
+            "price",
+            "mcap",
+            "pe",
+            "pb",
+            "dy",
+            "chg",
+            "turn",
+            "m20",
+            "m60",
+            "m121",
+            "custom"
+          ],
           "description": "排名因子 key（對齊 web/src/lib/metrics.ts）；custom = 使用者自訂指標"
         },
         "momDays": {
@@ -64,22 +97,48 @@
           "description": "自訂指標排序方向：數值越大/越小越好（factor==='custom' 時用）"
         },
         "topN": { "type": "integer", "minimum": 1, "description": "持股檔數" },
-        "poolTopN": { "type": "integer", "minimum": 1, "description": "選股池：當日市值前 N 大" },
-        "rebalance": { "enum": ["W", "M"], "description": "再平衡頻率：每週 / 每月" },
+        "poolTopN": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "選股池：當日市值前 N 大"
+        },
+        "rebalance": {
+          "enum": ["W", "M"],
+          "description": "再平衡頻率：每週 / 每月"
+        },
         "rebalanceDay": {
           "type": "integer",
           "minimum": 1,
           "maximum": 23,
           "description": "換股時點：M→每月第 N 個交易日；W→每週星期幾 (1=一 … 5=五)"
         },
-        "weighting": { "enum": ["equal", "mcap"], "description": "等權 / 市值權重" },
-        "execLagDays": { "enum": [0, 1], "description": "訊號日到成交隔幾個交易日" },
+        "weighting": {
+          "enum": ["equal", "mcap"],
+          "description": "等權 / 市值權重"
+        },
+        "execLagDays": {
+          "enum": [0, 1],
+          "description": "訊號日到成交隔幾個交易日"
+        },
         "stopType": {
           "enum": ["none", "fixed", "trailing", "daily", "ma"],
           "description": "停損型態：固定 / 移動 / 單日跌幅 / 跌破均線"
         },
-        "stopPct": { "type": "number", "exclusiveMinimum": 0, "description": "停損百分比（ma 型態不用）" },
-        "stopMaDays": { "type": "integer", "minimum": 1, "description": "stopType=ma 的均線天數" },
+        "stopPct": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "停損百分比（ma 型態不用）"
+        },
+        "stopMaDays": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "stopType=ma 的均線天數"
+        },
+        "takeProfitPct": {
+          "type": "number",
+          "minimum": 0,
+          "description": "自買進漲超過這個 % 就賣；0 = 不停利。成交時點同 stopExecNext。"
+        },
         "stopExecNext": {
           "type": "boolean",
           "description": "停損成交時點：false=觸發當日收盤、true=隔一交易日收盤"
@@ -106,8 +165,15 @@
           "type": "boolean",
           "description": "動能換股成交時點：true=隔一交易日收盤、false=訊號日收盤"
         },
-        "regime": { "enum": ["off", "ma", "mom"], "description": "大盤多空過濾指標" },
-        "regimeDays": { "type": "integer", "minimum": 1, "description": "多空指標回看天數" },
+        "regime": {
+          "enum": ["off", "ma", "mom"],
+          "description": "大盤多空過濾指標"
+        },
+        "regimeDays": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "多空指標回看天數"
+        },
         "regimeExit": {
           "enum": ["rebalance", "immediate"],
           "description": "轉空反應：撐到換股日 / 立刻清空"
@@ -123,12 +189,24 @@
       "additionalProperties": false,
       "required": ["id", "date", "code", "side", "shares", "price"],
       "properties": {
-        "id": { "type": "string", "minLength": 1, "description": "穩定 id，供編輯 / 刪除" },
-        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "成交日" },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "穩定 id，供編輯 / 刪除"
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "成交日"
+        },
         "code": { "type": "string", "pattern": "^\\d{4}$" },
         "side": { "enum": ["buy", "sell"], "description": "買進 / 賣出" },
         "shares": { "type": "number", "exclusiveMinimum": 0 },
-        "price": { "type": "number", "exclusiveMinimum": 0, "description": "成交價" }
+        "price": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "成交價"
+        }
       }
     },
     "position": {

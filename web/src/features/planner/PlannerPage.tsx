@@ -7,8 +7,8 @@
  * 資料新鮮度：因子歷史（官方收盤）之外，再用最新報價補一列暫定的當日資料
  * （`hooks/useLiveMarket`），所以盤中與盤後都不會停在昨天。
  */
-import { useMemo } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useEffect, useMemo } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { InfoHint } from '../../components/InfoHint'
 import { Layout } from '../../components/Layout'
@@ -30,7 +30,6 @@ import { PlanSettings } from './PlanSettings'
 import styles from './planner.module.css'
 import { SwapWatchPanel } from './SwapWatchPanel'
 import { TomorrowCard } from './TomorrowCard'
-import { TradeLog } from './TradeLog'
 
 const price = (v: number | null | undefined) =>
   v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
@@ -40,6 +39,11 @@ export function PlannerPage() {
   // 有 query（從回測頁帶設定過來）才傳 seed —— 直接開 /plan 就別動既有計畫
   const seed = useMemo(() => (search ? decodeParams(search) : undefined), [search])
   const [plan, setPlan] = useOperatorPlan(seed)
+  // 套用完就把 query 清掉，不然重新整理會再蓋一次策略
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (search) navigate('/plan', { replace: true })
+  }, [search, navigate])
 
   const hist = useAsync(loadAllFactorHistory, [])
   const bl = useAsync(loadBaselines, [])
@@ -111,78 +115,78 @@ export function PlannerPage() {
 
         <TomorrowCard report={report} />
 
-        <HoldingsPanel report={report} factor={factor} />
+        <HoldingsPanel report={report} />
 
-        <SwapWatchPanel report={report} factor={factor} />
+        <p className={styles.quickLinks}>
+          <Link to="/performance">成交後記一筆 →</Link>
+        </p>
 
-        <DateTimeline report={report} />
+        <details className={styles.fold}>
+          <summary>為什麼是這個結論（換股監看、日期、目標名單）</summary>
+          <div className={`${styles.foldBody} ${styles.foldStack}`}>
+            <SwapWatchPanel report={report} factor={factor} />
 
-        <div className={styles.card}>
-          <h3>
-            目標名單{' '}
-            <span className={styles.sub}>
-              依 {report.factorLabel} 排名（{report.asOfDate}
-              {report.provisionalDate ? '，暫定' : ' 收盤'}）
-            </span>
-            <InfoHint label="這份名單怎麼用">
-              這是「假如現在就換股，會持有哪幾檔」。真正要動手的時機以最上面的結論為準 ——
-              非換股日看到名單和手上不一樣是正常的，動能每天都在變，到 {report.nextRebalanceDate}{' '}
-              會重新排一次。
-            </InfoHint>
-          </h3>
-          {report.targets.length === 0 ? (
-            <p className={styles.note}>（空頭，這輪不持股）</p>
-          ) : (
-            <div className={styles.scroll}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>代號 / 名稱</th>
-                    <th>{report.factorLabel}</th>
-                    <th>現價</th>
-                    <th>目標比重</th>
-                    <th>我有嗎</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.targets.map((t, i) => {
-                    const held = report.holdings.some((h) => h.code === t.code)
-                    return (
-                      <tr key={t.code}>
-                        <td>{i + 1}</td>
-                        <td>
-                          {t.code} {t.name}
-                        </td>
-                        <td>{factorFmt(factor)(t.factor)}</td>
-                        <td>{price(t.price)}</td>
-                        <td>{(t.weight * 100).toFixed(0)}%</td>
-                        <td className={held ? styles.ok : styles.warn}>
-                          {held ? '已持有' : '要買進'}
-                        </td>
+            <DateTimeline report={report} />
+
+            <div className={styles.card}>
+              <h3>
+                目標名單{' '}
+                <span className={styles.sub}>
+                  依 {report.factorLabel} 排名（{report.asOfDate}
+                  {report.provisionalDate ? '，暫定' : ' 收盤'}）
+                </span>
+                <InfoHint label="這份名單怎麼用">
+                  這是「假如現在就換股，會持有哪幾檔」。真正要動手的時機以最上面的結論為準 ——
+                  非換股日看到名單和手上不一樣是正常的，動能每天都在變，到{' '}
+                  {report.nextRebalanceDate} 會重新排一次。
+                </InfoHint>
+              </h3>
+              {report.targets.length === 0 ? (
+                <p className={styles.note}>（空頭，這輪不持股）</p>
+              ) : (
+                <div className={styles.scroll}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>代號 / 名稱</th>
+                        <th>{report.factorLabel}</th>
+                        <th>現價</th>
+                        <th>目標比重</th>
+                        <th>我有嗎</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {report.targets.map((t, i) => {
+                        const held = report.holdings.some((h) => h.code === t.code)
+                        return (
+                          <tr key={t.code}>
+                            <td>{i + 1}</td>
+                            <td>
+                              {t.code} {t.name}
+                            </td>
+                            <td>{factorFmt(factor)(t.factor)}</td>
+                            <td>{price(t.price)}</td>
+                            <td>{(t.weight * 100).toFixed(0)}%</td>
+                            <td className={held ? styles.ok : styles.warn}>
+                              {held ? '已持有' : '要買進'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        <TradeLog
-          trades={plan.trades}
-          onChange={(trades) => setPlan({ ...plan, trades })}
-          names={names}
-          priceOf={market.priceOf}
-          defaultDate={report.asOfDate}
-        />
+          </div>
+        </details>
 
         <PlanSettings
           plan={plan}
           setPlan={setPlan}
           holidays={holidays}
           strategySummary={report.strategySummary}
-          seeded={Boolean(search)}
         />
 
         <details className={styles.fold}>

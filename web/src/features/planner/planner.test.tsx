@@ -99,7 +99,7 @@ describe('TomorrowCard', () => {
 
 describe('HoldingsPanel', () => {
   it('空手時給說明', () => {
-    render(<HoldingsPanel report={reportOf(10, plan())} factor="m20" />)
+    render(<HoldingsPanel report={reportOf(10, plan())} />)
     expect(screen.getByText(/目前空手/)).toBeInTheDocument()
   })
 
@@ -110,8 +110,8 @@ describe('HoldingsPanel', () => {
         holdings: [{ code: '3333', shares: 1000, entryPrice: 100, entryDate: '2026-01-20' }],
       }),
     )
-    render(<HoldingsPanel report={r} factor="m20" />)
-    expect(screen.getByText('10 交易日')).toBeInTheDocument()
+    render(<HoldingsPanel report={r} />)
+    expect(screen.getByText('10 日')).toBeInTheDocument()
     expect(screen.getAllByText(/已掉出名單/).length).toBeGreaterThan(0)
   })
 })

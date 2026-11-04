@@ -5,6 +5,7 @@
 import { useState } from 'react'
 
 import { InfoHint } from '../../components/InfoHint'
+import { DEFAULT_COSTS, tradeCash, type TradeCosts } from '../../lib/costs'
 import { buildLedger, tradeId, type Trade } from '../../lib/trades'
 import styles from './planner.module.css'
 
@@ -18,7 +19,7 @@ interface Draft {
   price: string
 }
 
-const blank = (date: string): Draft => ({ date, side: 'buy', code: '', shares: '1000', price: '' })
+const blank = (date: string): Draft => ({ date, side: 'buy', code: '', shares: '', price: '' })
 
 export function TradeLog({
   trades,
@@ -26,6 +27,7 @@ export function TradeLog({
   names,
   priceOf,
   defaultDate,
+  costs = DEFAULT_COSTS,
 }: {
   trades: Trade[]
   onChange: (next: Trade[]) => void
@@ -34,6 +36,7 @@ export function TradeLog({
   priceOf: (code: string) => number | null
   /** 新增表單的預設日期（最新交易日） */
   defaultDate: string
+  costs?: TradeCosts
 }) {
   const [draft, setDraft] = useState<Draft>(() => blank(defaultDate))
   const [err, setErr] = useState('')
@@ -72,7 +75,7 @@ export function TradeLog({
   return (
     <div className={styles.card}>
       <h3>
-        買賣紀錄 <span className={styles.sub}>成交後回來記一筆，上面的持股與天數就會自己更新</span>
+        買賣紀錄 <span className={styles.sub}>成交後記一筆，持股與績效會自己更新</span>
         <InfoHint label="這份紀錄怎麼用">
           <ul>
             <li>
@@ -82,7 +85,10 @@ export function TradeLog({
               賣光再買回，持有天數<b>重新起算</b>（最短持有、移動停損的高點都跟著重來）。
             </li>
             <li>只存在這台裝置的瀏覽器，不會上傳，換裝置或清瀏覽器資料就會不見。</li>
-            <li>已實現損益未計手續費與證交稅。</li>
+            <li>
+              金額＝實付 / 實收（已含手續費與稅），費率同回測設定。券商把一張單拆成多筆顯示時，
+              個別金額可能差 1 元，合計相同。
+            </li>
           </ul>
         </InfoHint>
       </h3>
@@ -142,7 +148,7 @@ export function TradeLog({
                 <th>買賣</th>
                 <th>股數</th>
                 <th>成交價</th>
-                <th>金額</th>
+                <th>實付 / 實收</th>
                 <th />
               </tr>
             </thead>
@@ -158,7 +164,7 @@ export function TradeLog({
                   </td>
                   <td>{t.shares.toLocaleString()}</td>
                   <td>{t.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                  <td>{money(t.shares * t.price)}</td>
+                  <td>{money(tradeCash(t, costs).net)}</td>
                   <td>
                     <button
                       className={styles.iconBtn}
@@ -174,14 +180,6 @@ export function TradeLog({
           </table>
         </div>
       )}
-
-      <p className={styles.note}>
-        已實現損益：
-        <b className={ledger.realized < 0 ? styles.neg : styles.pos}>
-          {ledger.realized >= 0 ? '+' : ''}
-          {money(ledger.realized)} 元
-        </b>
-      </p>
     </div>
   )
 }
