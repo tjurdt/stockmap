@@ -4,7 +4,7 @@
 股票也收進來，回測時再用當日市值 point-in-time 篩前 50。
 
   python -m twse_pipeline.universe_history            # 寫 schema/backtest_universe.json
-  python -m twse_pipeline.universe_history --years 3 --top 60
+  python -m twse_pipeline.universe_history --years 5 --top 60
 
 候選名單用「現在的股數 × 當日收盤」粗估市值排名（快、只打 TWSE）；取前 M（>50 的緩衝）再聯集，
 邊界誤差被緩衝吸收。回測的實際排名由 backfill 抓的歷史股數決定，才是精準的。
@@ -110,7 +110,7 @@ def write(constituents: list[Constituent], years: int, top_m: int) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="建立回測歷史選股池")
-    ap.add_argument("--years", type=int, default=3)
+    ap.add_argument("--years", type=int, default=5)
     ap.add_argument("--top", type=int, default=60, help="每週取前 M（>50 的緩衝）")
     args = ap.parse_args(argv)
 
