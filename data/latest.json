@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-06",
- "generatedAt": "2026-11-06T20:55:57+08:00",
+ "generatedAt": "2026-11-07T00:05:40+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -654,7 +654,7 @@
    "name": "臻鼎-KY",
    "close": 373.0,
    "chgPct": -5.3299,
-   "mcap": 4227.57,
+   "mcap": 4235.45,
    "value": 103.3532,
    "pe": 46.63,
    "pb": 2.83,
@@ -836,7 +836,7 @@
    "name": "世芯-KY",
    "close": 2830.0,
    "chgPct": -4.3919,
-   "mcap": 2442.43,
+   "mcap": 2443.7,
    "value": 89.8917,
    "pe": 43.41,
    "pb": 4.23,
@@ -846,5 +846,5 @@
    "mom121": 33.735
   }
  ],
- "universeRankedAt": "2026-11-06"
+ "universeRankedAt": "2026-11-07"
 }
