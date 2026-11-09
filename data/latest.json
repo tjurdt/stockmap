@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-09",
- "generatedAt": "2026-11-09T21:51:43+08:00",
+ "generatedAt": "2026-11-10T02:59:32+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -836,7 +836,7 @@
    "name": "世芯-KY",
    "close": 3110.0,
    "chgPct": 9.894,
-   "mcap": 2685.49,
+   "mcap": 2686.54,
    "value": 20.533,
    "pe": 41.51,
    "pb": 4.04,
@@ -846,5 +846,5 @@
    "mom121": 37.773
   }
  ],
- "universeRankedAt": "2026-11-07"
+ "universeRankedAt": "2026-11-10"
 }

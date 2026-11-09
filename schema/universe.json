@@ -1,6 +1,6 @@
 {
   "$comment": "台股市值前 60 大 — 由 twse_pipeline.universe_rank 每交易日重排，勿手改。前端顯示前 displayCount 檔（snapshot 另依當日市值重排）；其餘供回測選股池。sharesOutstandingM = 已發行普通股數（百萬股）。",
-  "rankedAt": "2026-11-07",
+  "rankedAt": "2026-11-10",
   "displayCount": 20,
   "constituents": [
     {
@@ -54,14 +54,19 @@
       "sharesOutstandingM": 358.321
     },
     {
-      "code": "3037",
-      "name": "欣興",
-      "sharesOutstandingM": 1641.292
-    },
-    {
       "code": "2412",
       "name": "中華電",
       "sharesOutstandingM": 7757.447
+    },
+    {
+      "code": "2382",
+      "name": "廣達",
+      "sharesOutstandingM": 4107.627
+    },
+    {
+      "code": "3037",
+      "name": "欣興",
+      "sharesOutstandingM": 1641.292
     },
     {
       "code": "2408",
@@ -74,16 +79,6 @@
       "sharesOutstandingM": 12570.094
     },
     {
-      "code": "2382",
-      "name": "廣達",
-      "sharesOutstandingM": 4107.627
-    },
-    {
-      "code": "3017",
-      "name": "奇鋐",
-      "sharesOutstandingM": 392.67
-    },
-    {
       "code": "2887",
       "name": "台新新光金",
       "sharesOutstandingM": 25115.062
@@ -94,19 +89,14 @@
       "sharesOutstandingM": 13864.396
     },
     {
+      "code": "3017",
+      "name": "奇鋐",
+      "sharesOutstandingM": 392.67
+    },
+    {
       "code": "6669",
       "name": "緯穎",
       "sharesOutstandingM": 560.2
-    },
-    {
-      "code": "3443",
-      "name": "創意",
-      "sharesOutstandingM": 134.012
-    },
-    {
-      "code": "3653",
-      "name": "健策",
-      "sharesOutstandingM": 147.204
     },
     {
       "code": "2884",
@@ -114,14 +104,14 @@
       "sharesOutstandingM": 17723.51
     },
     {
+      "code": "3443",
+      "name": "創意",
+      "sharesOutstandingM": 134.012
+    },
+    {
       "code": "6505",
       "name": "台塑化",
       "sharesOutstandingM": 9525.96
-    },
-    {
-      "code": "2327",
-      "name": "國巨",
-      "sharesOutstandingM": 2063.128
     },
     {
       "code": "2886",
@@ -129,9 +119,14 @@
       "sharesOutstandingM": 14833.378
     },
     {
-      "code": "2345",
-      "name": "智邦",
-      "sharesOutstandingM": 561.118
+      "code": "2327",
+      "name": "國巨",
+      "sharesOutstandingM": 2063.128
+    },
+    {
+      "code": "3653",
+      "name": "健策",
+      "sharesOutstandingM": 147.204
     },
     {
       "code": "2059",
@@ -139,14 +134,19 @@
       "sharesOutstandingM": 95.297
     },
     {
-      "code": "7769",
-      "name": "鴻勁",
-      "sharesOutstandingM": 179.93
+      "code": "2345",
+      "name": "智邦",
+      "sharesOutstandingM": 561.118
     },
     {
       "code": "2880",
       "name": "華南金",
       "sharesOutstandingM": 14056.135
+    },
+    {
+      "code": "7769",
+      "name": "鴻勁",
+      "sharesOutstandingM": 179.93
     },
     {
       "code": "2357",
@@ -157,11 +157,6 @@
       "code": "2890",
       "name": "永豐金",
       "sharesOutstandingM": 14782.169
-    },
-    {
-      "code": "8046",
-      "name": "南電",
-      "sharesOutstandingM": 646.165
     },
     {
       "code": "2892",
@@ -179,6 +174,11 @@
       "sharesOutstandingM": 16974.612
     },
     {
+      "code": "8046",
+      "name": "南電",
+      "sharesOutstandingM": 646.165
+    },
+    {
       "code": "3231",
       "name": "緯創",
       "sharesOutstandingM": 3429.842
@@ -189,9 +189,9 @@
       "sharesOutstandingM": 4500.0
     },
     {
-      "code": "2360",
-      "name": "致茂",
-      "sharesOutstandingM": 425.246
+      "code": "6446",
+      "name": "藥華藥",
+      "sharesOutstandingM": 422.435
     },
     {
       "code": "2603",
@@ -199,14 +199,9 @@
       "sharesOutstandingM": 2165.043
     },
     {
-      "code": "2395",
-      "name": "研華",
-      "sharesOutstandingM": 869.046
-    },
-    {
-      "code": "6446",
-      "name": "藥華藥",
-      "sharesOutstandingM": 422.435
+      "code": "2360",
+      "name": "致茂",
+      "sharesOutstandingM": 425.246
     },
     {
       "code": "3045",
@@ -214,19 +209,14 @@
       "sharesOutstandingM": 3723.431
     },
     {
+      "code": "2395",
+      "name": "研華",
+      "sharesOutstandingM": 869.046
+    },
+    {
       "code": "2301",
       "name": "光寶科",
       "sharesOutstandingM": 2276.108
-    },
-    {
-      "code": "2368",
-      "name": "金像電",
-      "sharesOutstandingM": 530.595
-    },
-    {
-      "code": "1216",
-      "name": "統一",
-      "sharesOutstandingM": 5682.015
     },
     {
       "code": "5880",
@@ -234,14 +224,19 @@
       "sharesOutstandingM": 16072.96
     },
     {
+      "code": "1216",
+      "name": "統一",
+      "sharesOutstandingM": 5682.015
+    },
+    {
+      "code": "2368",
+      "name": "金像電",
+      "sharesOutstandingM": 530.595
+    },
+    {
       "code": "4958",
       "name": "臻鼎-KY",
       "sharesOutstandingM": 1135.51
-    },
-    {
-      "code": "1301",
-      "name": "台塑",
-      "sharesOutstandingM": 6365.741
     },
     {
       "code": "4904",
@@ -249,9 +244,9 @@
       "sharesOutstandingM": 3607.705
     },
     {
-      "code": "3189",
-      "name": "景碩",
-      "sharesOutstandingM": 526.91
+      "code": "1301",
+      "name": "台塑",
+      "sharesOutstandingM": 6365.741
     },
     {
       "code": "1326",
@@ -264,14 +259,14 @@
       "sharesOutstandingM": 515.513
     },
     {
+      "code": "3189",
+      "name": "景碩",
+      "sharesOutstandingM": 526.91
+    },
+    {
       "code": "2801",
       "name": "彰銀",
       "sharesOutstandingM": 12060.197
-    },
-    {
-      "code": "2615",
-      "name": "萬海",
-      "sharesOutstandingM": 2806.146
     },
     {
       "code": "3034",
@@ -279,19 +274,24 @@
       "sharesOutstandingM": 611.511
     },
     {
+      "code": "2615",
+      "name": "萬海",
+      "sharesOutstandingM": 2806.146
+    },
+    {
       "code": "3481",
       "name": "群創",
       "sharesOutstandingM": 7989.197
     },
     {
-      "code": "3665",
-      "name": "貿聯-KY",
-      "sharesOutstandingM": 199.578
-    },
-    {
       "code": "2449",
       "name": "京元電子",
       "sharesOutstandingM": 1283.882
+    },
+    {
+      "code": "3665",
+      "name": "貿聯-KY",
+      "sharesOutstandingM": 199.578
     },
     {
       "code": "6770",
@@ -301,7 +301,7 @@
     {
       "code": "3661",
       "name": "世芯-KY",
-      "sharesOutstandingM": 86.35
+      "sharesOutstandingM": 86.384
     }
   ]
 }
