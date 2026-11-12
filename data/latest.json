@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-12",
- "generatedAt": "2026-11-12T21:45:41+08:00",
+ "generatedAt": "2026-11-13T00:57:37+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -178,7 +178,7 @@
    "name": "聯電",
    "close": 101.0,
    "chgPct": -2.8846,
-   "mcap": 12695.79,
+   "mcap": 12695.22,
    "value": 112.76,
    "pe": 15.36,
    "pb": 2.77,
@@ -846,5 +846,5 @@
    "mom121": 104.907
   }
  ],
- "universeRankedAt": "2026-11-12"
+ "universeRankedAt": "2026-11-13"
 }
