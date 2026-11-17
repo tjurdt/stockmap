@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-17",
- "generatedAt": "2026-11-17T22:20:42+08:00",
+ "generatedAt": "2026-11-18T01:44:52+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -846,5 +846,5 @@
    "mom121": 35.421
   }
  ],
- "universeRankedAt": "2026-11-17"
+ "universeRankedAt": "2026-11-18"
 }
