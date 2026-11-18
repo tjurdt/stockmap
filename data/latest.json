@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-18",
- "generatedAt": "2026-11-18T21:55:17+08:00",
+ "generatedAt": "2026-11-19T01:26:04+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -514,7 +514,7 @@
    "name": "藥華藥",
    "close": 1245.0,
    "chgPct": -2.7344,
-   "mcap": 5259.32,
+   "mcap": 5259.42,
    "value": 35.4538,
    "pe": 58.42,
    "pb": 12.96,
@@ -780,7 +780,7 @@
    "name": "景碩",
    "close": 579.0,
    "chgPct": 6.8266,
-   "mcap": 3050.81,
+   "mcap": 3050.75,
    "value": 457.8044,
    "pe": 58.41,
    "pb": 6.08,
@@ -846,5 +846,5 @@
    "mom121": 118.747
   }
  ],
- "universeRankedAt": "2026-11-18"
+ "universeRankedAt": "2026-11-19"
 }
