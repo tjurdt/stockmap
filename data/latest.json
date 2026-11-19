@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-19",
- "generatedAt": "2026-11-19T22:23:38+08:00",
+ "generatedAt": "2026-11-20T01:30:43+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -24,7 +24,7 @@
    "name": "聯發科",
    "close": 3720.0,
    "chgPct": -5.5838,
-   "mcap": 59704.25,
+   "mcap": 59703.17,
    "value": 746.2054,
    "pe": 63.37,
    "pb": 13.52,
@@ -846,5 +846,5 @@
    "mom121": 25.731
   }
  ],
- "universeRankedAt": "2026-11-19"
+ "universeRankedAt": "2026-11-20"
 }
