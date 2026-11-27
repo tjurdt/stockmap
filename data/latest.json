@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "asOf": "2026-11-27",
- "generatedAt": "2026-11-27T23:00:22+08:00",
+ "generatedAt": "2026-11-28T02:21:09+08:00",
  "histLen": 400,
  "universeDisplayCount": 20,
  "stocks": [
@@ -10,7 +10,7 @@
    "name": "台積電",
    "close": 2180.0,
    "chgPct": 1.6317,
-   "mcap": 565325.67,
+   "mcap": 565325.56,
    "value": 921.607,
    "pe": 21.83,
    "pb": 7.95,
@@ -846,5 +846,5 @@
    "mom121": 28.126
   }
  ],
- "universeRankedAt": "2026-11-27"
+ "universeRankedAt": "2026-11-28"
 }
